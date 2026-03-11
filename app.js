@@ -36,7 +36,7 @@ setInterval(tickClock, 500);
 tickClock();
 
 // ── Formatting ─────────────────────────────────────────
-function fmt(n, d = 2) {
+function fmt(n, d = 3) {
   if (n == null || isNaN(n)) return "--";
   return Number(n).toLocaleString("en-US", {
     minimumFractionDigits: d, maximumFractionDigits: d,
@@ -60,7 +60,7 @@ function microTick() {
     // Random walk biased toward server price
     const drift = (base - prev) * 0.3; // pull toward real price
     const noise = (Math.random() - 0.5) * 2 * NOISE[sym];
-    const newPrice = +(prev + drift + noise).toFixed(sym === "XAU" ? 2 : 4);
+    const newPrice = +(prev + drift + noise).toFixed(3);
 
     prevDisplay[sym] = displayPrices[sym];
     displayPrices[sym] = newPrice;
@@ -68,7 +68,7 @@ function microTick() {
     // Update display
     const el = document.getElementById(`price-${sym}`);
     if (el) {
-      const dec = sym === "XAU" ? 2 : 4;
+      const dec = 3;
       el.textContent = "$" + fmt(newPrice, dec);
 
       // Flash color
@@ -140,7 +140,7 @@ function drawChart(symbol, history) {
   ctx.font = "10px Inter, sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  const ld = symbol === "XAU" ? 0 : 2;
+  const ld = 3;
   ctx.fillText(max.toFixed(ld), W - 4, pad.t + 4);
   ctx.fillText(min.toFixed(ld), W - 4, H - pad.b - 4);
 
@@ -304,7 +304,7 @@ SYMBOLS.forEach((sym) => {
     ctx.restore();
 
     // Tooltip
-    const dec = sym === "XAU" ? 2 : 4;
+    const dec = 3;
     let text = `$${fmt(val, dec)}`;
     if (ts) {
       text += `  ${ts.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${ts.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
@@ -365,13 +365,13 @@ function applyData(data) {
     }
 
     // Range & Spread
-    const dec = sym === "XAU" ? 2 : 4;
+    const dec = 3;
     const rangeEl = document.getElementById(`range-${sym}`);
     if (rangeEl) rangeEl.textContent = `$${fmt(p.dayLow, dec)} – $${fmt(p.dayHigh, dec)}`;
 
     const spreadEl = document.getElementById(`spread-${sym}`);
     if (spreadEl) {
-      const sv = sym === "XAU" ? (p.price * 0.0003).toFixed(2) : (p.price * 0.0008).toFixed(4);
+      const sv = (p.price * (sym === "XAU" ? 0.0003 : 0.0008)).toFixed(3);
       spreadEl.textContent = `$${sv}`;
     }
   }
