@@ -13,6 +13,7 @@ const CHART_COLORS = {
 const NOISE = { XAU: 0.35, XAG: 0.008 };
 
 let serverPrices = {};   // last price from server
+let serverBidAsk = {};   // last bid/ask from server
 let displayPrices = {};  // current displayed price (with micro-ticks)
 let prevDisplay = {};    // previous display for flash direction
 let lastData = null;
@@ -78,6 +79,18 @@ function microTick() {
         el.classList.add(newPrice > prevDisplay[sym] ? "flash-up" : "flash-down");
         setTimeout(() => el.classList.remove("flash-up", "flash-down"), 400);
       }
+    }
+
+    // Update bid/ask with micro-noise
+    const ba = serverBidAsk[sym];
+    if (ba) {
+      const spread = ba.ask - ba.bid;
+      const bidEl = document.getElementById(`bid-${sym}`);
+      const askEl = document.getElementById(`ask-${sym}`);
+      const microBid = +(newPrice - spread / 2).toFixed(3);
+      const microAsk = +(newPrice + spread / 2).toFixed(3);
+      if (bidEl) bidEl.textContent = `$${fmt(microBid)}`;
+      if (askEl) askEl.textContent = `$${fmt(microAsk)}`;
     }
 
     // Store micro-tick for potential use
@@ -344,8 +357,15 @@ function applyData(data) {
 
     // Update server base price (micro-tick will interpolate from here)
     serverPrices[sym] = p.price;
+    if (p.bid && p.ask) serverBidAsk[sym] = { bid: p.bid, ask: p.ask };
     // Initialize display price if first load
     if (!displayPrices[sym]) displayPrices[sym] = p.price;
+
+    // Bid / Ask
+    const bidEl = document.getElementById(`bid-${sym}`);
+    const askEl = document.getElementById(`ask-${sym}`);
+    if (bidEl) bidEl.textContent = `$${fmt(p.bid)}`;
+    if (askEl) askEl.textContent = `$${fmt(p.ask)}`;
 
     // Delta badge
     const deltaEl = document.getElementById(`delta-${sym}`);

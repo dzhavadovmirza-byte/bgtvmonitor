@@ -276,6 +276,37 @@ body {
   background: rgba(255, 255, 255, 0.04);
 }
 
+/* ── Bid / Ask row ─────────────────────────────────────── */
+.card__bidask {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.card__bidask-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.card__bidask-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.card__bidask-value {
+  font-size: clamp(15px, 1.3vw, 20px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  transition: color 0.3s ease;
+}
+.card__bidask-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+}
+
 /* ── Chart ──────────────────────────────────────────────── */
 .card__chart {
   position: relative;

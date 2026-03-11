@@ -103,6 +103,8 @@ async function fetchKitco() {
     source: "Kitco",
     XAU: {
       price: +gold.price.toFixed(2),
+      bid: +gold.bid.toFixed(2),
+      ask: +gold.ask.toFixed(2),
       dayHigh: gold.dayHigh,
       dayLow: gold.dayLow,
       dayChange: +gold.dayChange.toFixed(2),
@@ -111,6 +113,8 @@ async function fetchKitco() {
     },
     XAG: {
       price: +silver.price.toFixed(4),
+      bid: +silver.bid.toFixed(4),
+      ask: +silver.ask.toFixed(4),
       dayHigh: silver.dayHigh,
       dayLow: silver.dayLow,
       dayChange: +silver.dayChange.toFixed(4),
@@ -147,6 +151,8 @@ async function fetchStooq() {
     source: "Stooq",
     XAU: {
       price: gold.close,
+      bid: +(gold.close - 0.5).toFixed(2),
+      ask: +(gold.close + 0.5).toFixed(2),
       dayHigh: gold.high,
       dayLow: gold.low,
       dayChange: +(gold.close - gold.open).toFixed(2),
@@ -155,6 +161,8 @@ async function fetchStooq() {
     },
     XAG: {
       price: silver.close,
+      bid: +(silver.close - 0.06).toFixed(4),
+      ask: +(silver.close + 0.06).toFixed(4),
       dayHigh: silver.high,
       dayLow: silver.low,
       dayChange: +(silver.close - silver.open).toFixed(4),
@@ -181,6 +189,8 @@ async function fetchCurrencyAPI() {
     source: "CurrencyAPI",
     XAU: {
       price: +goldPrice.toFixed(2),
+      bid: +(goldPrice - 0.5).toFixed(2),
+      ask: +(goldPrice + 0.5).toFixed(2),
       dayHigh: +(goldPrice * 1.003).toFixed(2),
       dayLow: +(goldPrice * 0.997).toFixed(2),
       dayChange: +(goldPrice * 0.001).toFixed(2),
@@ -189,6 +199,8 @@ async function fetchCurrencyAPI() {
     },
     XAG: {
       price: +silverPrice.toFixed(4),
+      bid: +(silverPrice - 0.06).toFixed(4),
+      ask: +(silverPrice + 0.06).toFixed(4),
       dayHigh: +(silverPrice * 1.005).toFixed(4),
       dayLow: +(silverPrice * 0.995).toFixed(4),
       dayChange: +(silverPrice * 0.002).toFixed(4),
@@ -206,8 +218,8 @@ function simulatedPrices() {
   const sp = +(lastKnown.XAG.price + jS).toFixed(4);
   return {
     source: "Simulated",
-    XAU: { price: gp, dayHigh: gp + 3, dayLow: gp - 3, dayChange: +jG.toFixed(2), dayChangePercent: +((jG / gp) * 100).toFixed(2), open: lastKnown.XAU.open },
-    XAG: { price: sp, dayHigh: sp + 0.12, dayLow: sp - 0.12, dayChange: +jS.toFixed(4), dayChangePercent: +((jS / sp) * 100).toFixed(2), open: lastKnown.XAG.open },
+    XAU: { price: gp, bid: +(gp - 0.5).toFixed(2), ask: +(gp + 0.5).toFixed(2), dayHigh: gp + 3, dayLow: gp - 3, dayChange: +jG.toFixed(2), dayChangePercent: +((jG / gp) * 100).toFixed(2), open: lastKnown.XAU.open },
+    XAG: { price: sp, bid: +(sp - 0.06).toFixed(4), ask: +(sp + 0.06).toFixed(4), dayHigh: sp + 0.12, dayLow: sp - 0.12, dayChange: +jS.toFixed(4), dayChangePercent: +((jS / sp) * 100).toFixed(2), open: lastKnown.XAG.open },
   };
 }
 
@@ -286,8 +298,8 @@ export default async function handler(req, res) {
       source: result.source,
       sourceMode: result.sourceMode,
       prices: {
-        XAU: { price: result.XAU.price, dayHigh: result.XAU.dayHigh, dayLow: result.XAU.dayLow, dayChange: result.XAU.dayChange, dayChangePercent: result.XAU.dayChangePercent, updatedAt: new Date().toISOString() },
-        XAG: { price: result.XAG.price, dayHigh: result.XAG.dayHigh, dayLow: result.XAG.dayLow, dayChange: result.XAG.dayChange, dayChangePercent: result.XAG.dayChangePercent, updatedAt: new Date().toISOString() },
+        XAU: { price: result.XAU.price, bid: result.XAU.bid, ask: result.XAU.ask, dayHigh: result.XAU.dayHigh, dayLow: result.XAU.dayLow, dayChange: result.XAU.dayChange, dayChangePercent: result.XAU.dayChangePercent, updatedAt: new Date().toISOString() },
+        XAG: { price: result.XAG.price, bid: result.XAG.bid, ask: result.XAG.ask, dayHigh: result.XAG.dayHigh, dayLow: result.XAG.dayLow, dayChange: result.XAG.dayChange, dayChangePercent: result.XAG.dayChangePercent, updatedAt: new Date().toISOString() },
       },
       history: { XAU: historyStore.XAU.slice(-168), XAG: historyStore.XAG.slice(-168) },
       marketSummary: getMarketSummary(),
