@@ -14,8 +14,8 @@ const HISTORY_INTERVAL_MS = 3600_000; // 1 hour
 
 // Last known good prices for fallback simulation
 let lastKnownPrices = {
-  XAU: { price: 2340.50, open: 2335.00 },
-  XAG: { price: 29.85, open: 29.70 },
+  XAU: { price: 5180.00, open: 5175.00 },
+  XAG: { price: 89.50, open: 89.30 },
 };
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -176,8 +176,10 @@ async function fetchMetalPriceAPI() {
   if (!xagToUsd || xagToUsd <= 0) throw new Error("Currency API no XAG data");
 
   // Simulate day range around the price (this source doesn't provide OHLC)
-  const goldOpen = lastKnownPrices.XAU.open || xauToUsd * 0.998;
-  const silverOpen = lastKnownPrices.XAG.open || xagToUsd * 0.998;
+  const goldOpen = (Math.abs(lastKnownPrices.XAU.open - xauToUsd) / xauToUsd < 0.05)
+    ? lastKnownPrices.XAU.open : xauToUsd * 0.998;
+  const silverOpen = (Math.abs(lastKnownPrices.XAG.open - xagToUsd) / xagToUsd < 0.05)
+    ? lastKnownPrices.XAG.open : xagToUsd * 0.998;
 
   return {
     source: "CurrencyAPI",
@@ -216,8 +218,10 @@ async function fetchGoldBroker() {
   if (!goldPrice || goldPrice <= 0) throw new Error("GoldPrice.org invalid gold");
   if (!silverPrice || silverPrice <= 0) throw new Error("GoldPrice.org invalid silver");
 
-  const goldOpen = lastKnownPrices.XAU.open || goldPrice * 0.998;
-  const silverOpen = lastKnownPrices.XAG.open || silverPrice * 0.998;
+  const goldOpen = (Math.abs(lastKnownPrices.XAU.open - goldPrice) / goldPrice < 0.05)
+    ? lastKnownPrices.XAU.open : goldPrice * 0.998;
+  const silverOpen = (Math.abs(lastKnownPrices.XAG.open - silverPrice) / silverPrice < 0.05)
+    ? lastKnownPrices.XAG.open : silverPrice * 0.998;
 
   return {
     source: "GoldPrice.org",
