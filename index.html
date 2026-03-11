@@ -3,52 +3,113 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0c1f57" />
-    <title>Budget Gold Monitor TV</title>
+    <meta name="theme-color" content="#060e24" />
+    <title>Budget Gold Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="tv-app">
-      <header class="topbar">
-        <h1 class="title">🪙 Budget Gold Monitor</h1>
-        <p class="clock" id="clock">--</p>
-        <div class="market-line" id="marketLine">Market status: --</div>
+    <div class="bg-glow bg-glow--gold"></div>
+    <div class="bg-glow bg-glow--silver"></div>
+
+    <main class="app">
+      <header class="header">
+        <div class="header__left">
+          <div class="logo">
+            <div class="logo__dot"></div>
+            <span class="logo__text">Budget Gold Monitor</span>
+          </div>
+          <div class="status-pill" id="statusPill">
+            <span class="status-pill__dot"></span>
+            <span class="status-pill__text" id="connection">Connecting</span>
+          </div>
+        </div>
+        <div class="header__center">
+          <div class="market-badge" id="marketLine">
+            <span class="market-badge__label">MARKET</span>
+            <span class="market-badge__value">--</span>
+          </div>
+        </div>
+        <div class="header__right">
+          <p class="clock" id="clock">--</p>
+        </div>
       </header>
-      <section class="grid">
-        <article class="card" data-symbol="XAU">
-          <div class="card-head"><h2>GOLD</h2><span>XAU / OUNCE</span></div>
-          <div class="price-row">
-            <div class="trend-arrow" id="arrow-XAU">↑</div>
-            <div class="price" id="price-XAU">--</div>
-            <div class="delta" id="delta-XAU">(--)</div>
+
+      <section class="cards">
+        <article class="card card--gold" data-symbol="XAU">
+          <div class="card__top">
+            <div class="card__label">
+              <span class="card__metal">GOLD</span>
+              <span class="card__pair">XAU/USD</span>
+            </div>
+            <div class="card__arrow" id="arrow-XAU">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path id="arrow-path-XAU" d="M10 15V5M10 5L5 10M10 5L15 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
           </div>
-          <div class="chart-wrap"><canvas class="chart" id="chart-XAU" aria-label="Gold chart"></canvas></div>
-          <div class="days-axis" id="days-XAU">Mon  Tue  Wed  Thu  Fri  Sat  Sun</div>
-          <div class="chart-note">Last 7 days</div>
-          <div class="range" id="range-XAU">Today's Range: --</div>
-          <div class="spread" id="spread-XAU">Spread: --</div>
+          <div class="card__price-row">
+            <span class="card__price" id="price-XAU">--</span>
+            <span class="card__delta" id="delta-XAU">--</span>
+          </div>
+          <div class="card__chart">
+            <canvas id="chart-XAU"></canvas>
+            <div class="card__tooltip" id="tooltip-XAU"></div>
+          </div>
+          <div class="card__meta">
+            <div class="card__meta-item">
+              <span class="card__meta-label">Range</span>
+              <span class="card__meta-value" id="range-XAU">--</span>
+            </div>
+            <div class="card__meta-item">
+              <span class="card__meta-label">Spread</span>
+              <span class="card__meta-value" id="spread-XAU">--</span>
+            </div>
+          </div>
         </article>
-        <article class="card" data-symbol="XAG">
-          <div class="card-head"><h2>SILVER</h2><span>XAG / OUNCE</span></div>
-          <div class="price-row">
-            <div class="trend-arrow" id="arrow-XAG">↑</div>
-            <div class="price" id="price-XAG">--</div>
-            <div class="delta" id="delta-XAG">(--)</div>
+
+        <article class="card card--silver" data-symbol="XAG">
+          <div class="card__top">
+            <div class="card__label">
+              <span class="card__metal">SILVER</span>
+              <span class="card__pair">XAG/USD</span>
+            </div>
+            <div class="card__arrow" id="arrow-XAG">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path id="arrow-path-XAG" d="M10 15V5M10 5L5 10M10 5L15 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
           </div>
-          <div class="chart-wrap"><canvas class="chart" id="chart-XAG" aria-label="Silver chart"></canvas></div>
-          <div class="days-axis" id="days-XAG">Mon  Tue  Wed  Thu  Fri  Sat  Sun</div>
-          <div class="chart-note">Last 7 days</div>
-          <div class="range" id="range-XAG">Today's Range: --</div>
-          <div class="spread" id="spread-XAG">Spread: --</div>
+          <div class="card__price-row">
+            <span class="card__price" id="price-XAG">--</span>
+            <span class="card__delta" id="delta-XAG">--</span>
+          </div>
+          <div class="card__chart">
+            <canvas id="chart-XAG"></canvas>
+            <div class="card__tooltip" id="tooltip-XAG"></div>
+          </div>
+          <div class="card__meta">
+            <div class="card__meta-item">
+              <span class="card__meta-label">Range</span>
+              <span class="card__meta-value" id="range-XAG">--</span>
+            </div>
+            <div class="card__meta-item">
+              <span class="card__meta-label">Spread</span>
+              <span class="card__meta-value" id="spread-XAG">--</span>
+            </div>
+          </div>
         </article>
       </section>
+
       <footer class="footer">
-        <span id="connection">Connecting...</span>
         <span id="sourceInfo">Source: --</span>
         <span id="tickAge">Last tick: --</span>
-        <span id="lastRefresh">Last refresh: --</span>
+        <span id="lastRefresh">--</span>
       </footer>
     </main>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>
