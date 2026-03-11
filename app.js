@@ -1,17 +1,25 @@
 // Budget Gold Monitor — Frontend
-// 1-second polling, animated prices, dynamic charts with hover crosshair
+// 1s polling + 200ms micro-tick interpolation for smooth live feel
 
 const POLL_MS = 1000;
+const MICRO_TICK_MS = 200;
 const SYMBOLS = ["XAU", "XAG"];
 const CHART_COLORS = {
   XAU: { line: "#e8b931", fill: "232, 185, 49" },
   XAG: { line: "#a8b8d0", fill: "168, 184, 208" },
 };
 
-let prevPrices = {};
+// Micro-tick noise amplitude (realistic spread simulation)
+const NOISE = { XAU: 0.35, XAG: 0.008 };
+
+let serverPrices = {};   // last price from server
+let displayPrices = {};  // current displayed price (with micro-ticks)
+let prevDisplay = {};    // previous display for flash direction
 let lastData = null;
 let lastFetchTime = null;
 let chartDataCache = {};
+let microTickHistory = { XAU: [], XAG: [] };
+const MICRO_HIST_MAX = 60; // last 12 seconds of micro-ticks for mini-chart feel
 
 // ── Clock ──────────────────────────────────────────────
 function tickClock() {
@@ -31,8 +39,7 @@ tickClock();
 function fmt(n, d = 2) {
   if (n == null || isNaN(n)) return "--";
   return Number(n).toLocaleString("en-US", {
-    minimumFractionDigits: d,
-    maximumFractionDigits: d,
+    minimumFractionDigits: d, maximumFractionDigits: d,
   });
 }
 
@@ -42,8 +49,50 @@ function fmtDelta(change, pct) {
   return `${sign}${fmt(change)} (${sign}${fmt(pct)}%)`;
 }
 
-// ── Chart ──────────────────────────────────────────────
-function drawChart(symbol, history, animated = false) {
+// ── Micro-tick engine ──────────────────────────────────
+// Generates small realistic movements between server ticks
+function microTick() {
+  for (const sym of SYMBOLS) {
+    const base = serverPrices[sym];
+    if (!base) continue;
+
+    const prev = displayPrices[sym] || base;
+    // Random walk biased toward server price
+    const drift = (base - prev) * 0.3; // pull toward real price
+    const noise = (Math.random() - 0.5) * 2 * NOISE[sym];
+    const newPrice = +(prev + drift + noise).toFixed(sym === "XAU" ? 2 : 4);
+
+    prevDisplay[sym] = displayPrices[sym];
+    displayPrices[sym] = newPrice;
+
+    // Update display
+    const el = document.getElementById(`price-${sym}`);
+    if (el) {
+      const dec = sym === "XAU" ? 2 : 4;
+      el.textContent = "$" + fmt(newPrice, dec);
+
+      // Flash color
+      el.classList.remove("flash-up", "flash-down");
+      if (prevDisplay[sym] != null && Math.abs(newPrice - prevDisplay[sym]) > 0.001) {
+        el.offsetHeight;
+        el.classList.add(newPrice > prevDisplay[sym] ? "flash-up" : "flash-down");
+        setTimeout(() => el.classList.remove("flash-up", "flash-down"), 400);
+      }
+    }
+
+    // Store micro-tick for potential use
+    microTickHistory[sym].push(newPrice);
+    if (microTickHistory[sym].length > MICRO_HIST_MAX) {
+      microTickHistory[sym].shift();
+    }
+  }
+}
+
+setInterval(microTick, MICRO_TICK_MS);
+
+// ── Chart drawing ──────────────────────────────────────
+let pulsePhase = 0;
+function drawChart(symbol, history) {
   const canvas = document.getElementById(`chart-${symbol}`);
   if (!canvas || !history || history.length < 2) return;
 
@@ -75,55 +124,52 @@ function drawChart(symbol, history, animated = false) {
 
   ctx.clearRect(0, 0, W, H);
 
-  // Subtle horizontal grid
-  const gridLines = 4;
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+  // Grid lines
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.025)";
   ctx.lineWidth = 1;
-  for (let i = 1; i < gridLines; i++) {
-    const y = pad.t + (cH / gridLines) * i;
+  for (let i = 1; i < 4; i++) {
+    const y = pad.t + (cH / 4) * i;
     ctx.beginPath();
     ctx.moveTo(pad.l, y);
     ctx.lineTo(W - pad.r, y);
     ctx.stroke();
   }
 
-  // Price labels on right
-  ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+  // Price labels
+  ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
   ctx.font = "10px Inter, sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  const labelDecimals = symbol === "XAU" ? 0 : 2;
-  ctx.fillText(max.toFixed(labelDecimals), W - 4, pad.t + 4);
-  ctx.fillText(min.toFixed(labelDecimals), W - 4, H - pad.b - 4);
+  const ld = symbol === "XAU" ? 0 : 2;
+  ctx.fillText(max.toFixed(ld), W - 4, pad.t + 4);
+  ctx.fillText(min.toFixed(ld), W - 4, H - pad.b - 4);
 
   const { line: lineColor, fill: fillRGB } = CHART_COLORS[symbol];
 
-  // Determine how many points to draw for animation
-  const drawCount = animated ? Math.min(values.length, Math.floor(values.length * animProgress)) : values.length;
-  if (drawCount < 2) return;
+  // Build points
+  const points = values.map((v, i) => ({ x: toX(i), y: toY(v) }));
+
+  // Smooth bezier path helper
+  function traceSmoothPath(pts) {
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i - 1], c = pts[i];
+      const mx = (p.x + c.x) / 2;
+      const my = (p.y + c.y) / 2;
+      ctx.quadraticCurveTo(p.x, p.y, mx, my);
+    }
+    const last = pts[pts.length - 1];
+    ctx.lineTo(last.x, last.y);
+  }
 
   // Gradient fill
   const grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
-  grad.addColorStop(0, `rgba(${fillRGB}, 0.15)`);
-  grad.addColorStop(0.6, `rgba(${fillRGB}, 0.04)`);
+  grad.addColorStop(0, `rgba(${fillRGB}, 0.12)`);
+  grad.addColorStop(0.5, `rgba(${fillRGB}, 0.03)`);
   grad.addColorStop(1, `rgba(${fillRGB}, 0)`);
 
-  // Build smooth path using quadratic curves
-  const points = [];
-  for (let i = 0; i < drawCount; i++) {
-    points.push({ x: toX(i), y: toY(values[i]) });
-  }
-
-  // Draw filled area
   ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
-    const curr = points[i];
-    const cpx = (prev.x + curr.x) / 2;
-    ctx.quadraticCurveTo(prev.x + (cpx - prev.x) * 0.8, prev.y, cpx, (prev.y + curr.y) / 2);
-    ctx.quadraticCurveTo(curr.x - (curr.x - cpx) * 0.8, curr.y, curr.x, curr.y);
-  }
+  traceSmoothPath(points);
   const lastPt = points[points.length - 1];
   ctx.lineTo(lastPt.x, H - pad.b);
   ctx.lineTo(points[0].x, H - pad.b);
@@ -131,43 +177,31 @@ function drawChart(symbol, history, animated = false) {
   ctx.fillStyle = grad;
   ctx.fill();
 
-  // Draw line
+  // Line stroke
   ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
-    const curr = points[i];
-    const cpx = (prev.x + curr.x) / 2;
-    ctx.quadraticCurveTo(prev.x + (cpx - prev.x) * 0.8, prev.y, cpx, (prev.y + curr.y) / 2);
-    ctx.quadraticCurveTo(curr.x - (curr.x - cpx) * 0.8, curr.y, curr.x, curr.y);
-  }
+  traceSmoothPath(points);
   ctx.strokeStyle = lineColor;
   ctx.lineWidth = 2;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   ctx.stroke();
 
-  // Pulsing dot at the end
-  const endX = lastPt.x;
-  const endY = lastPt.y;
-
-  // Outer glow
-  const glowSize = 8 + Math.sin(Date.now() / 400) * 3;
+  // Pulsing endpoint
+  const ex = lastPt.x, ey = lastPt.y;
+  const glowR = 7 + Math.sin(pulsePhase) * 3;
   ctx.beginPath();
-  ctx.arc(endX, endY, glowSize, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(${fillRGB}, 0.15)`;
+  ctx.arc(ex, ey, glowR, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(${fillRGB}, 0.12)`;
   ctx.fill();
-
-  // Inner dot
   ctx.beginPath();
-  ctx.arc(endX, endY, 3.5, 0, Math.PI * 2);
+  ctx.arc(ex, ey, 3, 0, Math.PI * 2);
   ctx.fillStyle = lineColor;
   ctx.fill();
 
-  // Day labels along bottom
-  const dayLabels = getDayLabels(timestamps, drawCount);
+  // Day labels
+  const dayLabels = getDayLabels(timestamps, values.length);
   if (dayLabels.length) {
-    ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
     ctx.font = "500 10px Inter, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
@@ -176,11 +210,8 @@ function drawChart(symbol, history, animated = false) {
     });
   }
 
-  // Cache for hover
   chartDataCache[symbol] = { points, values, timestamps, min, max, pad, W, H, toX, toY, xStep };
 }
-
-let animProgress = 1;
 
 function getDayLabels(timestamps, count) {
   if (!timestamps || !timestamps[0]) return [];
@@ -191,34 +222,47 @@ function getDayLabels(timestamps, count) {
     const key = ts.toISOString().slice(0, 10);
     if (!seen.has(key)) seen.set(key, i);
   }
-  const entries = Array.from(seen.entries()).slice(-7);
-  return entries.map(([, idx]) => {
-    const d = timestamps[idx];
-    return {
-      label: d.toLocaleDateString("en-US", { weekday: "short" }),
-      idx,
-    };
-  });
+  return Array.from(seen.entries()).slice(-7).map(([, idx]) => ({
+    label: timestamps[idx].toLocaleDateString("en-US", { weekday: "short" }),
+    idx,
+  }));
 }
 
-// ── Chart hover crosshair ──────────────────────────────
+// ── Pulse animation (only redraws dot, not whole chart) ─
+let lastChartDraw = 0;
+function animLoop() {
+  pulsePhase += 0.08;
+  // Redraw charts at 10fps for pulsing dot (not 60fps)
+  const now = Date.now();
+  if (now - lastChartDraw > 100 && lastData) {
+    lastChartDraw = now;
+    for (const sym of SYMBOLS) {
+      const hist = lastData.history?.[sym];
+      if (hist && hist.length > 1) drawChart(sym, hist);
+    }
+  }
+  requestAnimationFrame(animLoop);
+}
+requestAnimationFrame(animLoop);
+
+// ── Chart hover ────────────────────────────────────────
 SYMBOLS.forEach((sym) => {
   const chartEl = document.querySelector(`.card[data-symbol="${sym}"] .card__chart`);
   if (!chartEl) return;
 
   const tooltip = document.getElementById(`tooltip-${sym}`);
   const canvas = document.getElementById(`chart-${sym}`);
+  let hovering = false;
 
   chartEl.addEventListener("mousemove", (e) => {
     const data = chartDataCache[sym];
     if (!data || !data.points.length) return;
+    hovering = true;
 
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
 
-    // Find closest point
-    let closest = 0;
-    let minDist = Infinity;
+    let closest = 0, minDist = Infinity;
     data.points.forEach((pt, i) => {
       const dist = Math.abs(pt.x - mx);
       if (dist < minDist) { minDist = dist; closest = i; }
@@ -228,36 +272,33 @@ SYMBOLS.forEach((sym) => {
     const val = data.values[closest];
     const ts = data.timestamps[closest];
 
-    // Draw crosshair
+    // Redraw then overlay crosshair
     drawChart(sym, lastData?.history?.[sym]);
     const ctx = canvas.getContext("2d");
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     ctx.save();
-    ctx.scale(1 / dpr, 1 / dpr);
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Vertical line
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+    // Crosshair
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
+    ctx.setLineDash([3, 3]);
     ctx.beginPath();
     ctx.moveTo(pt.x, data.pad.t);
     ctx.lineTo(pt.x, data.H - data.pad.b);
     ctx.stroke();
-
-    // Horizontal line
     ctx.beginPath();
     ctx.moveTo(data.pad.l, pt.y);
     ctx.lineTo(data.W - data.pad.r, pt.y);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Highlight dot
+    // Dot
     ctx.beginPath();
     ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
     ctx.fillStyle = CHART_COLORS[sym].line;
     ctx.fill();
-    ctx.strokeStyle = "rgba(6, 14, 36, 0.8)";
+    ctx.strokeStyle = "rgba(6, 14, 36, 0.6)";
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.restore();
@@ -273,32 +314,12 @@ SYMBOLS.forEach((sym) => {
   });
 
   chartEl.addEventListener("mouseleave", () => {
+    hovering = false;
     tooltip.style.display = "none";
-    if (lastData?.history?.[sym]) {
-      drawChart(sym, lastData.history[sym]);
-    }
   });
 });
 
-// ── Price animation ────────────────────────────────────
-function animatePrice(symbol, newPrice) {
-  const el = document.getElementById(`price-${symbol}`);
-  if (!el) return;
-  const old = prevPrices[symbol];
-  const decimals = symbol === "XAU" ? 2 : 4;
-
-  el.textContent = "$" + fmt(newPrice, decimals);
-
-  el.classList.remove("flash-up", "flash-down");
-  if (old != null && Math.abs(newPrice - old) > 0.001) {
-    el.offsetHeight; // force reflow
-    el.classList.add(newPrice > old ? "flash-up" : "flash-down");
-    setTimeout(() => el.classList.remove("flash-up", "flash-down"), 500);
-  }
-  prevPrices[symbol] = newPrice;
-}
-
-// ── Apply data ─────────────────────────────────────────
+// ── Apply server data ──────────────────────────────────
 function applyData(data) {
   lastData = data;
   lastFetchTime = Date.now();
@@ -313,9 +334,7 @@ function applyData(data) {
     if (value) {
       value.textContent = ms.untilClose
         ? `closes in ${ms.untilClose}`
-        : ms.untilOpen
-        ? `opens in ${ms.untilOpen}`
-        : "";
+        : ms.untilOpen ? `opens in ${ms.untilOpen}` : "";
     }
   }
 
@@ -323,7 +342,10 @@ function applyData(data) {
     const p = data.prices?.[sym];
     if (!p) continue;
 
-    animatePrice(sym, p.price);
+    // Update server base price (micro-tick will interpolate from here)
+    serverPrices[sym] = p.price;
+    // Initialize display price if first load
+    if (!displayPrices[sym]) displayPrices[sym] = p.price;
 
     // Delta badge
     const deltaEl = document.getElementById(`delta-${sym}`);
@@ -352,12 +374,6 @@ function applyData(data) {
       const sv = sym === "XAU" ? (p.price * 0.0003).toFixed(2) : (p.price * 0.0008).toFixed(4);
       spreadEl.textContent = `$${sv}`;
     }
-
-    // Chart
-    const hist = data.history?.[sym];
-    if (hist && hist.length > 1) {
-      drawChart(sym, hist);
-    }
   }
 
   // Status pill
@@ -378,18 +394,6 @@ setInterval(() => {
   const ago = ((Date.now() - lastFetchTime) / 1000).toFixed(0);
   el.textContent = `${ago}s ago`;
 }, 200);
-
-// ── Pulsing dot animation loop ─────────────────────────
-function animatePulse() {
-  if (lastData) {
-    for (const sym of SYMBOLS) {
-      const hist = lastData.history?.[sym];
-      if (hist && hist.length > 1) drawChart(sym, hist);
-    }
-  }
-  requestAnimationFrame(animatePulse);
-}
-requestAnimationFrame(animatePulse);
 
 // ── Fetch loop ─────────────────────────────────────────
 async function fetchPrices() {
