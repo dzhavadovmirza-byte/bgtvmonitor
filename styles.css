@@ -77,24 +77,26 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  padding-bottom: 18px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
-.header__left { display: flex; align-items: center; gap: 16px; }
-.header__center { flex: 1; display: flex; justify-content: center; }
+.header__left { display: flex; align-items: center; gap: 18px; }
+.header__center { display: flex; align-items: center; }
 .header__right { display: flex; align-items: center; }
 
-.logo { display: flex; align-items: center; gap: 10px; }
+.logo { display: flex; align-items: center; gap: 14px; }
 .logo__dot {
-  width: 10px; height: 10px;
+  width: 14px; height: 14px;
   background: var(--gold);
   border-radius: 50%;
-  box-shadow: 0 0 12px var(--gold-glow);
+  box-shadow: 0 0 16px var(--gold-glow);
 }
 .logo__text {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: clamp(24px, 2.5vw, 34px);
+  font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--text);
 }
@@ -102,20 +104,20 @@ body {
 .status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px 4px 8px;
-  border-radius: 20px;
+  gap: 8px;
+  padding: 6px 16px 6px 12px;
+  border-radius: 24px;
   background: var(--green-bg);
-  border: 1px solid rgba(52, 211, 153, 0.15);
-  font-size: 11px;
-  font-weight: 600;
+  border: 1px solid rgba(52, 211, 153, 0.2);
+  font-size: clamp(14px, 1.4vw, 18px);
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--green);
   transition: var(--transition);
 }
 .status-pill__dot {
-  width: 6px; height: 6px;
+  width: 9px; height: 9px;
   border-radius: 50%;
   background: var(--green);
   animation: pulse 2s ease-in-out infinite;
@@ -136,25 +138,26 @@ body {
 .market-badge {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 10px;
+  font-size: clamp(16px, 1.6vw, 22px);
 }
 .market-badge__label {
-  color: var(--text-muted);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  font-size: 10px;
+  color: var(--green);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  font-size: clamp(14px, 1.4vw, 20px);
   text-transform: uppercase;
 }
 .market-badge__value {
-  color: var(--text-secondary);
-  font-weight: 500;
+  color: var(--text);
+  font-weight: 600;
+  font-size: clamp(14px, 1.4vw, 20px);
 }
 
 .clock {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
+  font-size: clamp(18px, 1.8vw, 26px);
+  font-weight: 700;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
