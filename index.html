@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0c1f57" />
+    <title>Budget Gold Monitor TV</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="tv-app">
+      <header class="topbar">
+        <h1 class="title">🪙 Budget Gold Monitor</h1>
+        <p class="clock" id="clock">--</p>
+        <div class="market-line" id="marketLine">Market status: --</div>
+      </header>
+      <section class="grid">
+        <article class="card" data-symbol="XAU">
+          <div class="card-head"><h2>GOLD</h2><span>XAU / OUNCE</span></div>
+          <div class="price-row">
+            <div class="trend-arrow" id="arrow-XAU">↑</div>
+            <div class="price" id="price-XAU">--</div>
+            <div class="delta" id="delta-XAU">(--)</div>
+          </div>
+          <div class="chart-wrap"><canvas class="chart" id="chart-XAU" aria-label="Gold chart"></canvas></div>
+          <div class="days-axis" id="days-XAU">Mon  Tue  Wed  Thu  Fri  Sat  Sun</div>
+          <div class="chart-note">Last 7 days</div>
+          <div class="range" id="range-XAU">Today's Range: --</div>
+          <div class="spread" id="spread-XAU">Spread: --</div>
+        </article>
+        <article class="card" data-symbol="XAG">
+          <div class="card-head"><h2>SILVER</h2><span>XAG / OUNCE</span></div>
+          <div class="price-row">
+            <div class="trend-arrow" id="arrow-XAG">↑</div>
+            <div class="price" id="price-XAG">--</div>
+            <div class="delta" id="delta-XAG">(--)</div>
+          </div>
+          <div class="chart-wrap"><canvas class="chart" id="chart-XAG" aria-label="Silver chart"></canvas></div>
+          <div class="days-axis" id="days-XAG">Mon  Tue  Wed  Thu  Fri  Sat  Sun</div>
+          <div class="chart-note">Last 7 days</div>
+          <div class="range" id="range-XAG">Today's Range: --</div>
+          <div class="spread" id="spread-XAG">Spread: --</div>
+        </article>
+      </section>
+      <footer class="footer">
+        <span id="connection">Connecting...</span>
+        <span id="sourceInfo">Source: --</span>
+        <span id="tickAge">Last tick: --</span>
+        <span id="lastRefresh">Last refresh: --</span>
+      </footer>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
