@@ -127,7 +127,7 @@ function drawChart(symbol, history) {
   const dataMax = Math.max(...values);
   const dataRange = dataMax - dataMin || 1;
   // Minimum visible range so small moves don't look like huge swings
-  const minRange = symbol === "XAU" ? 100 : 3;
+  const minRange = symbol === "XAU" ? 40 : 1.5;
   const range = Math.max(dataRange, minRange);
   const mid = (dataMin + dataMax) / 2;
   const min = mid - range / 2;
