@@ -123,9 +123,15 @@ function drawChart(symbol, history) {
   const timestamps = history.map((p) =>
     typeof p === "object" && p.ts ? new Date(p.ts) : null
   );
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  const dataRange = dataMax - dataMin || 1;
+  // Minimum visible range so small moves don't look like huge swings
+  const minRange = symbol === "XAU" ? 100 : 3;
+  const range = Math.max(dataRange, minRange);
+  const mid = (dataMin + dataMax) / 2;
+  const min = mid - range / 2;
+  const max = mid + range / 2;
 
   const pad = { t: 16, b: 28, l: 8, r: 8 };
   const cW = W - pad.l - pad.r;
@@ -214,8 +220,8 @@ function drawChart(symbol, history) {
   // Day labels
   const dayLabels = getDayLabels(timestamps, values.length);
   if (dayLabels.length) {
-    ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
-    ctx.font = "500 10px Inter, sans-serif";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.font = "600 11px Inter, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     dayLabels.forEach(({ label, idx }) => {

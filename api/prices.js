@@ -236,16 +236,25 @@ function pushHistory(prices) {
   }
 }
 
+function seededRandom(seed) {
+  // Simple deterministic PRNG so history is stable across cold starts
+  let s = seed;
+  return () => { s = (s * 16807 + 0) % 2147483647; return s / 2147483647; };
+}
+
 function ensureHistory(prices) {
   for (const sym of ["XAU", "XAG"]) {
     if (historyStore[sym].length < 2 && prices[sym]?.price) {
       const base = prices[sym].price;
       const vol = sym === "XAU" ? 15 : 0.4;
       const now = Date.now();
+      // Use a seed based on the current day so history is stable within the day
+      const daySeed = Math.floor(now / 86400000);
+      const rand = seededRandom(daySeed + (sym === "XAU" ? 1 : 2));
       const pts = [];
-      let p = base - vol * (Math.random() + 0.5);
+      let p = base - vol * (rand() + 0.5);
       for (let i = 167; i >= 0; i--) {
-        p += (Math.random() - 0.48) * (vol / 8);
+        p += (rand() - 0.48) * (vol / 8);
         if (i < 24) p += (base - p) * 0.05;
         pts.push({ price: +p.toFixed(sym === "XAU" ? 2 : 4), ts: now - i * HISTORY_INTERVAL_MS });
       }
