@@ -67,7 +67,16 @@ function getMarketSummary() {
     untilOpen = fmtTime(daysToSun * 1440 + openMins - mins);
   }
 
-  return { status: isOpen ? "open" : "closed", untilOpen, untilClose };
+  // Show exact close/open time in ET
+  const closeTime = "Fri 5:00 PM ET";
+  const openTime = "Sun 5:00 PM ET";
+
+  return {
+    status: isOpen ? "open" : "closed",
+    untilOpen, untilClose,
+    closeTime: isOpen ? closeTime : null,
+    openTime: !isOpen ? openTime : null,
+  };
 }
 
 // ── Source 1: Kitco (realtime bid/ask/mid + day data) ───

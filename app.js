@@ -351,9 +351,13 @@ function applyData(data) {
     const value = ml.querySelector(".market-badge__value");
     if (label) label.textContent = ms.status === "open" ? "MARKET OPEN" : "MARKET CLOSED";
     if (value) {
-      value.textContent = ms.untilClose
-        ? `closes in ${ms.untilClose}`
-        : ms.untilOpen ? `opens in ${ms.untilOpen}` : "";
+      if (ms.untilClose) {
+        value.textContent = `closes in ${ms.untilClose} (${ms.closeTime})`;
+      } else if (ms.untilOpen) {
+        value.textContent = `opens in ${ms.untilOpen} (${ms.openTime})`;
+      } else {
+        value.textContent = "";
+      }
     }
   }
 
@@ -396,8 +400,8 @@ function applyData(data) {
     if (rangeEl) rangeEl.textContent = `$${fmt(p.dayLow, dec)} – $${fmt(p.dayHigh, dec)}`;
 
     const spreadEl = document.getElementById(`spread-${sym}`);
-    if (spreadEl) {
-      const sv = (p.price * (sym === "XAU" ? 0.0003 : 0.0008)).toFixed(3);
+    if (spreadEl && p.bid && p.ask) {
+      const sv = (p.ask - p.bid).toFixed(3);
       spreadEl.textContent = `$${sv}`;
     }
   }
