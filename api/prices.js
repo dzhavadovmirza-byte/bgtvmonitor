@@ -58,9 +58,17 @@ function getMarketSummary() {
   const openMins = isDST ? 660 : 720;    // 11:00 or 12:00
   const closeMins = isDST ? 1440 : 1500; // midnight or 1:00 AM next day
 
+  // UK bank holidays when gold market is closed (checked in UTC to match Dubai date)
+  const month = dubai.getUTCMonth(); // 0-indexed
+  const date = dubai.getUTCDate();
+  const isUkHoliday = (month === 0 && date === 1) || (month === 11 && date === 25); // Jan 1, Dec 25
+
   let isOpen = false;
 
-  if (day >= 1 && day <= 5) {
+  if (isUkHoliday) {
+    // Market closed on UK bank holidays
+    isOpen = false;
+  } else if (day >= 1 && day <= 5) {
     // Monday-Friday
     if (isDST) {
       // Summer: open 11:00–midnight (same day)
@@ -118,12 +126,14 @@ function getMarketSummary() {
       daysToOpen = 1; // Sunday → Monday
     } else if (day === 6) {
       daysToOpen = 2; // Saturday → Monday
+    } else if (isUkHoliday) {
+      daysToOpen = 1; // Holiday — next session is tomorrow
     } else {
       // Weekday but outside hours
       if (mins < openMins) {
         daysToOpen = 0; // later today
       } else {
-        daysToOpen = 1; // tomorrow (if not Fri/Sat handled above)
+        daysToOpen = 1; // tomorrow
       }
     }
     untilOpen = fmtTime(daysToOpen * 1440 + (openMins - mins + 1440) % 1440);
