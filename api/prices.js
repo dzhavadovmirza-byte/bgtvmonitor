@@ -97,38 +97,18 @@ function getMarketSummary() {
 
   let untilClose = "", untilOpen = "";
   if (isOpen) {
-    // Calculate minutes until close
+    // Time until today's session ends (not weekly — just this session)
     if (isDST) {
-      // Close at midnight same day
-      let minsLeft = closeMins - mins;
-      if (day === 5) {
-        // Friday — close at midnight
-        untilClose = fmtTime(minsLeft);
-      } else {
-        // Mon-Thu: session closes at midnight, but reopens tomorrow
-        // "until weekly close" = remaining today + remaining days to Friday midnight
-        const daysLeft = 5 - day; // days until Friday
-        untilClose = fmtTime(daysLeft * 1440 + closeMins - mins);
-      }
+      // Summer: closes at midnight (1440) same day
+      untilClose = fmtTime(closeMins - mins);
     } else {
-      // Winter: close at 1am next day
+      // Winter: closes at 1am next day
       if (mins >= openMins) {
-        // After noon — close at 1am = 1440 - mins + 60
-        let minsLeft = 1440 - mins + 60;
-        if (day === 5) {
-          untilClose = fmtTime(minsLeft);
-        } else {
-          const daysLeft = 5 - day;
-          untilClose = fmtTime(daysLeft * 1440 + 1440 - mins + 60);
-        }
+        // After noon — remaining today + 60 min past midnight
+        untilClose = fmtTime(1440 - mins + 60);
       } else {
-        // Before 1am (early morning carry) — closes in (60 - mins)
-        if (day === 6) {
-          untilClose = fmtTime(60 - mins);
-        } else {
-          const daysLeft = 6 - day; // days until Saturday 1am
-          untilClose = fmtTime((daysLeft - 1) * 1440 + 1440 - mins + 60);
-        }
+        // Before 1am (early morning carry from prev day)
+        untilClose = fmtTime(60 - mins);
       }
     }
   } else {
@@ -152,7 +132,7 @@ function getMarketSummary() {
   return {
     status: isOpen ? "open" : "closed",
     untilOpen, untilClose,
-    closeTime: isOpen ? `Fri ${closeTimeStr}` : null,
+    closeTime: isOpen ? closeTimeStr : null,
     openTime: !isOpen ? `Mon ${openTimeStr}` : null,
   };
 }
