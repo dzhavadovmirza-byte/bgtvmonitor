@@ -17,6 +17,7 @@ let serverBidAsk = {};   // last bid/ask from server
 let displayPrices = {};  // current displayed price (with micro-ticks)
 let prevDisplay = {};    // previous display for flash direction
 let lastData = null;
+let marketOpen = true;    // track market status — freeze indicators when closed
 let lastFetchTime = null;
 let chartDataCache = {};
 let microTickHistory = { XAU: [], XAG: [] };
@@ -53,6 +54,9 @@ function fmtDelta(change, pct) {
 // ── Micro-tick engine ──────────────────────────────────
 // Generates small realistic movements between server ticks
 function microTick() {
+  // When market is closed, don't generate any movement — prices stay frozen
+  if (!marketOpen) return;
+
   for (const sym of SYMBOLS) {
     const base = serverPrices[sym];
     if (!base) continue;
@@ -340,16 +344,16 @@ SYMBOLS.forEach((sym) => {
 
 // ── Apply server data ──────────────────────────────────
 function applyData(data) {
-  lastData = data;
   lastFetchTime = Date.now();
 
   // Market status
   const ml = document.getElementById("marketLine");
   if (data.marketSummary) {
     const ms = data.marketSummary;
+    marketOpen = ms.status === "open";
     const label = ml.querySelector(".market-badge__label");
     const value = ml.querySelector(".market-badge__value");
-    if (label) label.textContent = ms.status === "open" ? "MARKET OPEN" : "MARKET CLOSED";
+    if (label) label.textContent = marketOpen ? "MARKET OPEN" : "MARKET CLOSED";
     if (value) {
       if (ms.untilClose) {
         value.textContent = `closes in ${ms.untilClose} (${ms.closeTime})`;
@@ -360,6 +364,20 @@ function applyData(data) {
       }
     }
   }
+
+  // When market is closed and we already have data, keep old prices — don't update
+  if (!marketOpen && lastData) {
+    // Only update market status display, history and source info, but not prices
+    lastData.marketSummary = data.marketSummary;
+    // Update status pill to show "Closed"
+    const pill = document.getElementById("statusPill");
+    const connText = document.getElementById("connection");
+    pill.classList.remove("is-error");
+    connText.textContent = "Closed";
+    return;
+  }
+
+  lastData = data;
 
   for (const sym of SYMBOLS) {
     const p = data.prices?.[sym];
@@ -444,7 +462,11 @@ async function fetchPrices() {
 }
 
 fetchPrices();
-setInterval(fetchPrices, POLL_MS);
+// Poll every second when open, every 30s when closed (just to detect market open)
+setInterval(() => {
+  const interval = marketOpen ? POLL_MS : 30000;
+  if (Date.now() - lastFetchTime >= interval) fetchPrices();
+}, POLL_MS);
 
 // Redraw on resize
 window.addEventListener("resize", () => {

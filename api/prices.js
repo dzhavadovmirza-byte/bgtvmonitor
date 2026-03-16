@@ -23,12 +23,13 @@ function fetchWithTimeout(url, ms = 2500) {
     .finally(() => clearTimeout(t));
 }
 
-// ── Market hours (forex: Sun 5pm ET – Fri 5pm ET) ──────
-function getMarketSummary() {
-  const now = new Date();
-  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  const year = now.getUTCFullYear();
-
+// ── Market hours (Dubai time schedule) ──────────────────
+// Summer (US DST active):  Mon-Fri 11:00 AM – 12:00 AM (midnight) Dubai
+// Winter (US DST inactive): Mon-Fri 12:00 PM – 1:00 AM Dubai
+// Saturday & Sunday: closed
+function isUsDst(utcMs) {
+  const year = new Date(utcMs).getUTCFullYear();
+  // US DST: 2nd Sunday of March 07:00 UTC – 1st Sunday of November 06:00 UTC
   const dstStart = new Date(Date.UTC(year, 2, 1));
   while (dstStart.getUTCDay() !== 0) dstStart.setUTCDate(dstStart.getUTCDate() + 1);
   dstStart.setUTCDate(dstStart.getUTCDate() + 7);
@@ -38,44 +39,121 @@ function getMarketSummary() {
   while (dstEnd.getUTCDay() !== 0) dstEnd.setUTCDate(dstEnd.getUTCDate() + 1);
   dstEnd.setUTCHours(6);
 
-  const isDST = utc >= dstStart.getTime() && utc < dstEnd.getTime();
-  const et = new Date(utc + (isDST ? -4 : -5) * 3600000);
-  const day = et.getDay();
-  const mins = et.getHours() * 60 + et.getMinutes();
-  const openMins = 17 * 60;
+  return utcMs >= dstStart.getTime() && utcMs < dstEnd.getTime();
+}
+
+function getMarketSummary() {
+  const now = Date.now();
+  const isDST = isUsDst(now);
+
+  // Dubai is always UTC+4
+  const dubaiMs = now + 4 * 3600000;
+  const dubai = new Date(dubaiMs);
+  const day = dubai.getUTCDay();       // 0=Sun..6=Sat
+  const mins = dubai.getUTCHours() * 60 + dubai.getUTCMinutes();
+
+  // Open/close times in Dubai minutes-from-midnight
+  // Summer: open 11:00 (660), close 00:00 next day (1440)
+  // Winter: open 12:00 (720), close 01:00 next day (1500, i.e. 25*60=next day 1am)
+  const openMins = isDST ? 660 : 720;    // 11:00 or 12:00
+  const closeMins = isDST ? 1440 : 1500; // midnight or 1:00 AM next day
 
   let isOpen = false;
-  if (day === 0) isOpen = mins >= openMins;
-  else if (day >= 1 && day <= 4) isOpen = true;
-  else if (day === 5) isOpen = mins < openMins;
+
+  if (day >= 1 && day <= 5) {
+    // Monday-Friday
+    if (isDST) {
+      // Summer: open 11:00–midnight (same day)
+      isOpen = mins >= openMins && mins < closeMins;
+    } else {
+      // Winter: open 12:00–01:00 next day
+      // So: open if mins >= 720 (after noon) OR mins < 60 (before 1am, carried from prev day)
+      if (day >= 2 && day <= 5) {
+        // Tue-Fri: could be in the early morning slot (00:00-01:00) from previous day's session
+        isOpen = mins >= openMins || mins < 60;
+      } else {
+        // Monday: only afternoon session starts (no carryover from Sunday)
+        isOpen = mins >= openMins;
+      }
+    }
+  } else if (day === 6) {
+    // Saturday
+    if (!isDST && mins < 60) {
+      // Winter: Friday session extends past midnight into Saturday 00:00-01:00
+      isOpen = true;
+    }
+  }
+  // Sunday: always closed
 
   const fmtTime = (totalMins) => {
+    if (totalMins < 0) totalMins += 7 * 1440;
     const h = Math.floor(totalMins / 60);
     const m = totalMins % 60;
     return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h ${m}m`;
   };
 
+  const openTimeStr = isDST ? "11:00 AM Dubai" : "12:00 PM Dubai";
+  const closeTimeStr = isDST ? "12:00 AM Dubai" : "1:00 AM Dubai";
+
   let untilClose = "", untilOpen = "";
   if (isOpen) {
-    let daysToFri = (5 - day + 7) % 7;
-    if (daysToFri === 0 && mins >= openMins) daysToFri = 7;
-    untilClose = fmtTime(daysToFri * 1440 + openMins - mins);
+    // Calculate minutes until close
+    if (isDST) {
+      // Close at midnight same day
+      let minsLeft = closeMins - mins;
+      if (day === 5) {
+        // Friday — close at midnight
+        untilClose = fmtTime(minsLeft);
+      } else {
+        // Mon-Thu: session closes at midnight, but reopens tomorrow
+        // "until weekly close" = remaining today + remaining days to Friday midnight
+        const daysLeft = 5 - day; // days until Friday
+        untilClose = fmtTime(daysLeft * 1440 + closeMins - mins);
+      }
+    } else {
+      // Winter: close at 1am next day
+      if (mins >= openMins) {
+        // After noon — close at 1am = 1440 - mins + 60
+        let minsLeft = 1440 - mins + 60;
+        if (day === 5) {
+          untilClose = fmtTime(minsLeft);
+        } else {
+          const daysLeft = 5 - day;
+          untilClose = fmtTime(daysLeft * 1440 + 1440 - mins + 60);
+        }
+      } else {
+        // Before 1am (early morning carry) — closes in (60 - mins)
+        if (day === 6) {
+          untilClose = fmtTime(60 - mins);
+        } else {
+          const daysLeft = 6 - day; // days until Saturday 1am
+          untilClose = fmtTime((daysLeft - 1) * 1440 + 1440 - mins + 60);
+        }
+      }
+    }
   } else {
-    let daysToSun = (7 - day) % 7;
-    if (daysToSun === 0 && mins < openMins) daysToSun = 0;
-    else if (daysToSun === 0) daysToSun = 7;
-    untilOpen = fmtTime(daysToSun * 1440 + openMins - mins);
+    // Calculate minutes until next open (next weekday at openMins)
+    let daysToOpen;
+    if (day === 0) {
+      daysToOpen = 1; // Sunday → Monday
+    } else if (day === 6) {
+      daysToOpen = 2; // Saturday → Monday
+    } else {
+      // Weekday but outside hours
+      if (mins < openMins) {
+        daysToOpen = 0; // later today
+      } else {
+        daysToOpen = 1; // tomorrow (if not Fri/Sat handled above)
+      }
+    }
+    untilOpen = fmtTime(daysToOpen * 1440 + (openMins - mins + 1440) % 1440);
   }
-
-  // Show exact close/open time in ET
-  const closeTime = "Fri 5:00 PM ET";
-  const openTime = "Sun 5:00 PM ET";
 
   return {
     status: isOpen ? "open" : "closed",
     untilOpen, untilClose,
-    closeTime: isOpen ? closeTime : null,
-    openTime: !isOpen ? openTime : null,
+    closeTime: isOpen ? `Fri ${closeTimeStr}` : null,
+    openTime: !isOpen ? `Mon ${openTimeStr}` : null,
   };
 }
 
@@ -295,8 +373,37 @@ export default async function handler(req, res) {
 
   try {
     const now = Date.now();
+    const marketSummary = getMarketSummary();
+
     if (cache.data && now - cache.ts < CACHE_TTL_MS) {
-      return res.status(200).json(cache.data);
+      return res.status(200).json({ ...cache.data, marketSummary });
+    }
+
+    // When market is closed, return last known prices without fetching
+    if (marketSummary.status === "closed") {
+      const closedPrices = {};
+      for (const sym of ["XAU", "XAG"]) {
+        closedPrices[sym] = {
+          price: lastKnown[sym].price,
+          bid: +(lastKnown[sym].price - (sym === "XAU" ? 0.5 : 0.06)).toFixed(sym === "XAU" ? 2 : 4),
+          ask: +(lastKnown[sym].price + (sym === "XAU" ? 0.5 : 0.06)).toFixed(sym === "XAU" ? 2 : 4),
+          dayHigh: lastKnown[sym].price,
+          dayLow: lastKnown[sym].price,
+          dayChange: 0,
+          dayChangePercent: 0,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      ensureHistory({ XAU: { price: lastKnown.XAU.price }, XAG: { price: lastKnown.XAG.price } });
+      const closedResponse = {
+        source: "Cached",
+        sourceMode: "closed",
+        prices: closedPrices,
+        history: { XAU: historyStore.XAU.slice(-168), XAG: historyStore.XAG.slice(-168) },
+        marketSummary,
+      };
+      cache = { data: closedResponse, ts: now };
+      return res.status(200).json(closedResponse);
     }
 
     const result = await fetchPrices();
@@ -320,7 +427,7 @@ export default async function handler(req, res) {
         XAG: { price: result.XAG.price, bid: result.XAG.bid, ask: result.XAG.ask, dayHigh: result.XAG.dayHigh, dayLow: result.XAG.dayLow, dayChange: result.XAG.dayChange, dayChangePercent: result.XAG.dayChangePercent, updatedAt: new Date().toISOString() },
       },
       history: { XAU: historyStore.XAU.slice(-168), XAG: historyStore.XAG.slice(-168) },
-      marketSummary: getMarketSummary(),
+      marketSummary,
     };
 
     cache = { data: response, ts: now };
