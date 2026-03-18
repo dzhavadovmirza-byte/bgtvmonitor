@@ -1,11 +1,18 @@
 // Budget Gold Monitor — Frontend
-// 1s polling + 400ms micro-tick interpolation for smooth live feel
-// Compatible with older TV browsers (no optional chaining, no AbortSignal.timeout)
+// Compatible with old TV browsers: ES5 only, XMLHttpRequest, no modern APIs
+
+// Polyfills for very old browsers
+if (!Date.now) { Date.now = function() { return new Date().getTime(); }; }
+if (!window.requestAnimationFrame) {
+  window.requestAnimationFrame = function(cb) { return setTimeout(cb, 16); };
+}
 
 // Apply "big" mode for old TVs: add ?big=1 to URL
-if (window.location.search.indexOf("big") !== -1) {
-  document.documentElement.classList.add("big-tv");
-}
+try {
+  if (String(window.location.search).indexOf("big") >= 0) {
+    document.documentElement.className += " big-tv";
+  }
+} catch (e) {}
 
 var POLL_MS = 1000;
 var MICRO_TICK_MS = 400;
@@ -460,40 +467,34 @@ setInterval(function() {
   el.textContent = ago + "s ago";
 }, 200);
 
-// ── Fetch loop ─────────────────────────────────────────
+// ── Fetch loop (XMLHttpRequest for max compatibility) ──
 function fetchPrices() {
-  var controller = null;
-  var timeoutId = null;
-  try {
-    // Use AbortController if available, otherwise plain fetch
-    if (typeof AbortController !== "undefined") {
-      controller = new AbortController();
-      timeoutId = setTimeout(function() { controller.abort(); }, 4000);
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", "/api/prices?t=" + Date.now(), true);
+  xhr.timeout = 4000;
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        applyData(data);
+      } catch (e) {
+        showError();
+      }
+    } else {
+      showError();
     }
-  } catch (e) {
-    controller = null;
-  }
+  };
+  xhr.ontimeout = function() { showError(); };
+  xhr.onerror = function() { showError(); };
+  xhr.send();
+}
 
-  var opts = {};
-  if (controller) opts.signal = controller.signal;
-
-  fetch("/api/prices?t=" + Date.now(), opts)
-    .then(function(res) {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return res.json();
-    })
-    .then(function(data) {
-      applyData(data);
-    })
-    .catch(function(err) {
-      if (timeoutId) clearTimeout(timeoutId);
-      console.warn("Fetch error:", err.message || err);
-      var pill = document.getElementById("statusPill");
-      var connText = document.getElementById("connection");
-      pill.classList.add("is-error");
-      connText.textContent = "Reconnecting";
-    });
+function showError() {
+  var pill = document.getElementById("statusPill");
+  var connText = document.getElementById("connection");
+  if (pill) pill.className = "status-pill is-error";
+  if (connText) connText.textContent = "Reconnecting";
 }
 
 fetchPrices();
