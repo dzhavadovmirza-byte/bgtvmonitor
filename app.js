@@ -2,6 +2,11 @@
 // 1s polling + 400ms micro-tick interpolation for smooth live feel
 // Compatible with older TV browsers (no optional chaining, no AbortSignal.timeout)
 
+// Apply "big" mode for old TVs: add ?big=1 to URL
+if (window.location.search.indexOf("big") !== -1) {
+  document.documentElement.classList.add("big-tv");
+}
+
 var POLL_MS = 1000;
 var MICRO_TICK_MS = 400;
 var SYMBOLS = ["XAU", "XAG"];

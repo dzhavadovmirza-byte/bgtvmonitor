@@ -381,6 +381,20 @@ body {
   font-weight: 500;
 }
 
+/* ── Big TV mode (?big=1 in URL) ──────────────────────── */
+.big-tv .card__price { font-size: clamp(64px, 9vw, 128px); }
+.big-tv .card__delta { font-size: clamp(22px, 2.4vw, 36px); }
+.big-tv .card__bidask-value { font-size: clamp(48px, 5.6vw, 80px); }
+.big-tv .card__bidask-label { font-size: 20px; }
+.big-tv .card__meta-value { font-size: clamp(24px, 2.4vw, 36px); }
+.big-tv .card__meta-label { font-size: 16px; }
+.big-tv .card__metal { font-size: clamp(22px, 2.4vw, 32px); }
+.big-tv .logo__text { font-size: clamp(36px, 4vw, 56px); }
+.big-tv .status-pill { font-size: clamp(22px, 2.4vw, 32px); }
+.big-tv .market-badge__label { font-size: clamp(22px, 2.4vw, 36px); }
+.big-tv .market-badge__value { font-size: clamp(22px, 2.4vw, 36px); }
+.big-tv .clock { font-size: clamp(30px, 3.2vw, 48px); }
+
 /* ── Responsive ────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .cards { grid-template-columns: 1fr; }
