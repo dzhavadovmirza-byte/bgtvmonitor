@@ -2,7 +2,7 @@
 // 1s polling + 200ms micro-tick interpolation for smooth live feel
 
 const POLL_MS = 1000;
-const MICRO_TICK_MS = 200;
+const MICRO_TICK_MS = 400;
 const SYMBOLS = ["XAU", "XAG"];
 const CHART_COLORS = {
   XAU: { line: "#e8b931", fill: "232, 185, 49" },
