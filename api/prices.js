@@ -53,9 +53,10 @@ function getMarketSummary() {
   const mins = dubai.getUTCHours() * 60 + dubai.getUTCMinutes();
 
   // Open/close times in Dubai minutes-from-midnight
-  // Summer: open 11:00 (660), close 00:00 next day (1440)
-  // Winter: open 12:00 (720), close 01:00 next day (1500, i.e. 25*60=next day 1am)
-  const openMins = isDST ? 660 : 720;    // 11:00 or 12:00
+  // Open: 7:00 AM Dubai (both seasons)
+  // Summer: close 00:00 (midnight) Dubai
+  // Winter: close 01:00 AM next day Dubai
+  const openMins = 420;                   // 7:00 AM Dubai
   const closeMins = isDST ? 1440 : 1500; // midnight or 1:00 AM next day
 
   // UK bank holidays when gold market is closed (checked in UTC to match Dubai date)
@@ -71,16 +72,15 @@ function getMarketSummary() {
   } else if (day >= 1 && day <= 5) {
     // Monday-Friday
     if (isDST) {
-      // Summer: open 11:00–midnight (same day)
+      // Summer: open 7:00 AM – midnight (same day)
       isOpen = mins >= openMins && mins < closeMins;
     } else {
-      // Winter: open 12:00–01:00 next day
-      // So: open if mins >= 720 (after noon) OR mins < 60 (before 1am, carried from prev day)
+      // Winter: open 7:00 AM – 1:00 AM next day
       if (day >= 2 && day <= 5) {
-        // Tue-Fri: could be in the early morning slot (00:00-01:00) from previous day's session
+        // Tue-Fri: open from 7am, OR before 1am (carry from prev day session)
         isOpen = mins >= openMins || mins < 60;
       } else {
-        // Monday: only afternoon session starts (no carryover from Sunday)
+        // Monday: session starts at 7am (no carryover from Sunday)
         isOpen = mins >= openMins;
       }
     }
@@ -100,7 +100,7 @@ function getMarketSummary() {
     return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h ${m}m`;
   };
 
-  const openTimeStr = isDST ? "11:00 AM Dubai" : "12:00 PM Dubai";
+  const openTimeStr = "7:00 AM Dubai";
   const closeTimeStr = isDST ? "12:00 AM Dubai" : "1:00 AM Dubai";
 
   let untilClose = "", untilOpen = "";
@@ -323,16 +323,18 @@ function ensureHistory(prices) {
   for (const sym of ["XAU", "XAG"]) {
     if (historyStore[sym].length < 2 && prices[sym]?.price) {
       const base = prices[sym].price;
-      const vol = sym === "XAU" ? 15 : 0.4;
+      // Tiny volatility: ~0.1% for gold, ~0.15% for silver — no fake spikes
+      const vol = sym === "XAU" ? base * 0.001 : base * 0.0015;
       const now = Date.now();
-      // Use a seed based on the current day so history is stable within the day
       const daySeed = Math.floor(now / 86400000);
       const rand = seededRandom(daySeed + (sym === "XAU" ? 1 : 2));
       const pts = [];
-      let p = base - vol * (rand() + 0.5);
+      let p = base;
       for (let i = 167; i >= 0; i--) {
-        p += (rand() - 0.48) * (vol / 8);
-        if (i < 24) p += (base - p) * 0.05;
+        const step = (rand() - 0.5) * vol;
+        p += step;
+        // Keep synthetic prices close to base — mean-revert strongly
+        p += (base - p) * 0.15;
         pts.push({ price: +p.toFixed(sym === "XAU" ? 2 : 4), ts: now - i * HISTORY_INTERVAL_MS });
       }
       pts.push({ price: base, ts: now });
