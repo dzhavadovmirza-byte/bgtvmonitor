@@ -1,44 +1,46 @@
 // Budget Gold Monitor — Frontend
-// 1s polling + 200ms micro-tick interpolation for smooth live feel
+// 1s polling + 400ms micro-tick interpolation for smooth live feel
+// Compatible with older TV browsers (no optional chaining, no AbortSignal.timeout)
 
-const POLL_MS = 1000;
-const MICRO_TICK_MS = 400;
-const SYMBOLS = ["XAU", "XAG"];
-const CHART_COLORS = {
+var POLL_MS = 1000;
+var MICRO_TICK_MS = 400;
+var SYMBOLS = ["XAU", "XAG"];
+var CHART_COLORS = {
   XAU: { line: "#e8b931", fill: "232, 185, 49" },
   XAG: { line: "#a8b8d0", fill: "168, 184, 208" },
 };
 
 // Micro-tick noise amplitude (realistic spread simulation)
-const NOISE = { XAU: 0.35, XAG: 0.008 };
+var NOISE = { XAU: 0.35, XAG: 0.008 };
 
-let serverPrices = {};   // last price from server
-let serverBidAsk = {};   // last bid/ask from server
-let displayPrices = {};  // current displayed price (with micro-ticks)
-let prevDisplay = {};    // previous display for flash direction
-let lastData = null;
-let marketOpen = true;    // track market status — freeze indicators when closed
-let lastFetchTime = null;
-let chartDataCache = {};
-let microTickHistory = { XAU: [], XAG: [] };
-const MICRO_HIST_MAX = 60; // last 12 seconds of micro-ticks for mini-chart feel
+var serverPrices = {};   // last price from server
+var serverBidAsk = {};   // last bid/ask from server
+var displayPrices = {};  // current displayed price (with micro-ticks)
+var prevDisplay = {};    // previous display for flash direction
+var lastData = null;
+var marketOpen = true;    // track market status — freeze indicators when closed
+var lastFetchTime = null;
+var chartDataCache = {};
+var microTickHistory = { XAU: [], XAG: [] };
+var MICRO_HIST_MAX = 60;
 
 // ── Clock ──────────────────────────────────────────────
 function tickClock() {
-  const now = new Date();
-  const time = now.toLocaleTimeString("en-US", {
+  var now = new Date();
+  var time = now.toLocaleTimeString("en-US", {
     hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
-  const date = now.toLocaleDateString("en-US", {
+  var date = now.toLocaleDateString("en-US", {
     weekday: "short", month: "short", day: "numeric",
   });
-  document.getElementById("clock").textContent = `${time}  ${date}`;
+  document.getElementById("clock").textContent = time + "  " + date;
 }
 setInterval(tickClock, 500);
 tickClock();
 
 // ── Formatting ─────────────────────────────────────────
-function fmt(n, d = 3) {
+function fmt(n, d) {
+  if (d === undefined) d = 3;
   if (n == null || isNaN(n)) return "--";
   return Number(n).toLocaleString("en-US", {
     minimumFractionDigits: d, maximumFractionDigits: d,
@@ -47,57 +49,60 @@ function fmt(n, d = 3) {
 
 function fmtDelta(change, pct) {
   if (change == null || isNaN(change)) return "--";
-  const sign = change >= 0 ? "+" : "";
-  return `${sign}${fmt(change)} (${sign}${fmt(pct)}%)`;
+  var sign = change >= 0 ? "+" : "";
+  return sign + fmt(change) + " (" + sign + fmt(pct) + "%)";
+}
+
+// ── Safe property access helper ────────────────────────
+function get(obj, key1, key2) {
+  if (!obj) return undefined;
+  var v = obj[key1];
+  if (key2 !== undefined && v) return v[key2];
+  return v;
 }
 
 // ── Micro-tick engine ──────────────────────────────────
-// Generates small realistic movements between server ticks
 function microTick() {
-  // When market is closed, don't generate any movement — prices stay frozen
   if (!marketOpen) return;
 
-  for (const sym of SYMBOLS) {
-    const base = serverPrices[sym];
+  for (var s = 0; s < SYMBOLS.length; s++) {
+    var sym = SYMBOLS[s];
+    var base = serverPrices[sym];
     if (!base) continue;
 
-    const prev = displayPrices[sym] || base;
-    // Random walk biased toward server price
-    const drift = (base - prev) * 0.3; // pull toward real price
-    const noise = (Math.random() - 0.5) * 2 * NOISE[sym];
-    const newPrice = +(prev + drift + noise).toFixed(3);
+    var prev = displayPrices[sym] || base;
+    var drift = (base - prev) * 0.3;
+    var noise = (Math.random() - 0.5) * 2 * NOISE[sym];
+    var newPrice = +(prev + drift + noise).toFixed(3);
 
     prevDisplay[sym] = displayPrices[sym];
     displayPrices[sym] = newPrice;
 
-    // Update display
-    const el = document.getElementById(`price-${sym}`);
+    var el = document.getElementById("price-" + sym);
     if (el) {
-      const dec = 3;
-      el.textContent = "$" + fmt(newPrice, dec);
+      el.textContent = "$" + fmt(newPrice, 3);
 
-      // Flash color
       el.classList.remove("flash-up", "flash-down");
       if (prevDisplay[sym] != null && Math.abs(newPrice - prevDisplay[sym]) > 0.001) {
-        el.offsetHeight;
+        el.offsetHeight; // force reflow
         el.classList.add(newPrice > prevDisplay[sym] ? "flash-up" : "flash-down");
-        setTimeout(() => el.classList.remove("flash-up", "flash-down"), 400);
+        (function(e) {
+          setTimeout(function() { e.classList.remove("flash-up", "flash-down"); }, 400);
+        })(el);
       }
     }
 
-    // Update bid/ask with micro-noise
-    const ba = serverBidAsk[sym];
+    var ba = serverBidAsk[sym];
     if (ba) {
-      const spread = ba.ask - ba.bid;
-      const bidEl = document.getElementById(`bid-${sym}`);
-      const askEl = document.getElementById(`ask-${sym}`);
-      const microBid = +(newPrice - spread / 2).toFixed(3);
-      const microAsk = +(newPrice + spread / 2).toFixed(3);
-      if (bidEl) bidEl.textContent = `$${fmt(microBid)}`;
-      if (askEl) askEl.textContent = `$${fmt(microAsk)}`;
+      var spread = ba.ask - ba.bid;
+      var bidEl = document.getElementById("bid-" + sym);
+      var askEl = document.getElementById("ask-" + sym);
+      var microBid = +(newPrice - spread / 2).toFixed(3);
+      var microAsk = +(newPrice + spread / 2).toFixed(3);
+      if (bidEl) bidEl.textContent = "$" + fmt(microBid);
+      if (askEl) askEl.textContent = "$" + fmt(microAsk);
     }
 
-    // Store micro-tick for potential use
     microTickHistory[sym].push(newPrice);
     if (microTickHistory[sym].length > MICRO_HIST_MAX) {
       microTickHistory[sym].shift();
@@ -108,50 +113,56 @@ function microTick() {
 setInterval(microTick, MICRO_TICK_MS);
 
 // ── Chart drawing ──────────────────────────────────────
-let pulsePhase = 0;
+var pulsePhase = 0;
 function drawChart(symbol, history) {
-  const canvas = document.getElementById(`chart-${symbol}`);
+  var canvas = document.getElementById("chart-" + symbol);
   if (!canvas || !history || history.length < 2) return;
 
-  const ctx = canvas.getContext("2d");
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const rect = canvas.getBoundingClientRect();
-  const W = rect.width;
-  const H = rect.height;
+  var ctx = canvas.getContext("2d");
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var rect = canvas.getBoundingClientRect();
+  var W = rect.width;
+  var H = rect.height;
 
   canvas.width = W * dpr;
   canvas.height = H * dpr;
   ctx.scale(dpr, dpr);
 
-  const values = history.map((p) => (typeof p === "object" ? p.price : p));
-  const timestamps = history.map((p) =>
-    typeof p === "object" && p.ts ? new Date(p.ts) : null
-  );
-  const dataMin = Math.min(...values);
-  const dataMax = Math.max(...values);
-  const dataRange = dataMax - dataMin || 1;
-  // Minimum visible range so small moves don't look like huge swings
-  const minRange = symbol === "XAU" ? 40 : 1.5;
-  const range = Math.max(dataRange, minRange);
-  const mid = (dataMin + dataMax) / 2;
-  const min = mid - range / 2;
-  const max = mid + range / 2;
+  var values = [];
+  var timestamps = [];
+  for (var i = 0; i < history.length; i++) {
+    var p = history[i];
+    values.push(typeof p === "object" ? p.price : p);
+    timestamps.push(typeof p === "object" && p.ts ? new Date(p.ts) : null);
+  }
 
-  const pad = { t: 16, b: 28, l: 8, r: 8 };
-  const cW = W - pad.l - pad.r;
-  const cH = H - pad.t - pad.b;
-  const xStep = cW / (values.length - 1);
+  var dataMin = values[0], dataMax = values[0];
+  for (var i = 1; i < values.length; i++) {
+    if (values[i] < dataMin) dataMin = values[i];
+    if (values[i] > dataMax) dataMax = values[i];
+  }
+  var dataRange = dataMax - dataMin || 1;
+  var minRange = symbol === "XAU" ? 40 : 1.5;
+  var range = Math.max(dataRange, minRange);
+  var mid = (dataMin + dataMax) / 2;
+  var min = mid - range / 2;
+  var max = mid + range / 2;
 
-  const toX = (i) => pad.l + i * xStep;
-  const toY = (v) => pad.t + cH - ((v - min) / range) * cH;
+  var pad = { t: 16, b: 28, l: 8, r: 8 };
+  var cW = W - pad.l - pad.r;
+  var cH = H - pad.t - pad.b;
+  var xStep = cW / (values.length - 1);
+
+  function toX(idx) { return pad.l + idx * xStep; }
+  function toY(v) { return pad.t + cH - ((v - min) / range) * cH; }
 
   ctx.clearRect(0, 0, W, H);
 
   // Grid lines
   ctx.strokeStyle = "rgba(255, 255, 255, 0.025)";
   ctx.lineWidth = 1;
-  for (let i = 1; i < 4; i++) {
-    const y = pad.t + (cH / 4) * i;
+  for (var g = 1; g < 4; g++) {
+    var y = pad.t + (cH / 4) * g;
     ctx.beginPath();
     ctx.moveTo(pad.l, y);
     ctx.lineTo(W - pad.r, y);
@@ -163,37 +174,41 @@ function drawChart(symbol, history) {
   ctx.font = "10px Inter, sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  const ld = 3;
-  ctx.fillText(max.toFixed(ld), W - 4, pad.t + 4);
-  ctx.fillText(min.toFixed(ld), W - 4, H - pad.b - 4);
+  ctx.fillText(max.toFixed(3), W - 4, pad.t + 4);
+  ctx.fillText(min.toFixed(3), W - 4, H - pad.b - 4);
 
-  const { line: lineColor, fill: fillRGB } = CHART_COLORS[symbol];
+  var colors = CHART_COLORS[symbol];
+  var lineColor = colors.line;
+  var fillRGB = colors.fill;
 
   // Build points
-  const points = values.map((v, i) => ({ x: toX(i), y: toY(v) }));
+  var points = [];
+  for (var i = 0; i < values.length; i++) {
+    points.push({ x: toX(i), y: toY(values[i]) });
+  }
 
   // Smooth bezier path helper
   function traceSmoothPath(pts) {
     ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) {
-      const p = pts[i - 1], c = pts[i];
-      const mx = (p.x + c.x) / 2;
-      const my = (p.y + c.y) / 2;
-      ctx.quadraticCurveTo(p.x, p.y, mx, my);
+    for (var j = 1; j < pts.length; j++) {
+      var prev = pts[j - 1], cur = pts[j];
+      var mx = (prev.x + cur.x) / 2;
+      var my = (prev.y + cur.y) / 2;
+      ctx.quadraticCurveTo(prev.x, prev.y, mx, my);
     }
-    const last = pts[pts.length - 1];
+    var last = pts[pts.length - 1];
     ctx.lineTo(last.x, last.y);
   }
 
   // Gradient fill
-  const grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
-  grad.addColorStop(0, `rgba(${fillRGB}, 0.12)`);
-  grad.addColorStop(0.5, `rgba(${fillRGB}, 0.03)`);
-  grad.addColorStop(1, `rgba(${fillRGB}, 0)`);
+  var grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
+  grad.addColorStop(0, "rgba(" + fillRGB + ", 0.12)");
+  grad.addColorStop(0.5, "rgba(" + fillRGB + ", 0.03)");
+  grad.addColorStop(1, "rgba(" + fillRGB + ", 0)");
 
   ctx.beginPath();
   traceSmoothPath(points);
-  const lastPt = points[points.length - 1];
+  var lastPt = points[points.length - 1];
   ctx.lineTo(lastPt.x, H - pad.b);
   ctx.lineTo(points[0].x, H - pad.b);
   ctx.closePath();
@@ -210,11 +225,11 @@ function drawChart(symbol, history) {
   ctx.stroke();
 
   // Pulsing endpoint
-  const ex = lastPt.x, ey = lastPt.y;
-  const glowR = 7 + Math.sin(pulsePhase) * 3;
+  var ex = lastPt.x, ey = lastPt.y;
+  var glowR = 7 + Math.sin(pulsePhase) * 3;
   ctx.beginPath();
   ctx.arc(ex, ey, glowR, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(${fillRGB}, 0.12)`;
+  ctx.fillStyle = "rgba(" + fillRGB + ", 0.12)";
   ctx.fill();
   ctx.beginPath();
   ctx.arc(ex, ey, 3, 0, Math.PI * 2);
@@ -222,45 +237,54 @@ function drawChart(symbol, history) {
   ctx.fill();
 
   // Day labels
-  const dayLabels = getDayLabels(timestamps, values.length);
+  var dayLabels = getDayLabels(timestamps, values.length);
   if (dayLabels.length) {
     ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
     ctx.font = "600 11px Inter, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    dayLabels.forEach(({ label, idx }) => {
-      ctx.fillText(label, toX(idx), H - pad.b + 8);
-    });
+    for (var d = 0; d < dayLabels.length; d++) {
+      ctx.fillText(dayLabels[d].label, toX(dayLabels[d].idx), H - pad.b + 8);
+    }
   }
 
-  chartDataCache[symbol] = { points, values, timestamps, min, max, pad, W, H, toX, toY, xStep };
+  chartDataCache[symbol] = { points: points, values: values, timestamps: timestamps, min: min, max: max, pad: pad, W: W, H: H, toX: toX, toY: toY, xStep: xStep };
 }
 
 function getDayLabels(timestamps, count) {
   if (!timestamps || !timestamps[0]) return [];
-  const seen = new Map();
-  for (let i = 0; i < count; i++) {
-    const ts = timestamps[i];
+  var seen = {};
+  var order = [];
+  for (var i = 0; i < count; i++) {
+    var ts = timestamps[i];
     if (!ts) continue;
-    const key = ts.toISOString().slice(0, 10);
-    if (!seen.has(key)) seen.set(key, i);
+    var key = ts.toISOString().slice(0, 10);
+    if (!(key in seen)) {
+      seen[key] = i;
+      order.push({ key: key, idx: i });
+    }
   }
-  return Array.from(seen.entries()).slice(-7).map(([, idx]) => ({
-    label: timestamps[idx].toLocaleDateString("en-US", { weekday: "short" }),
-    idx,
-  }));
+  var last7 = order.slice(-7);
+  var result = [];
+  for (var j = 0; j < last7.length; j++) {
+    result.push({
+      label: timestamps[last7[j].idx].toLocaleDateString("en-US", { weekday: "short" }),
+      idx: last7[j].idx,
+    });
+  }
+  return result;
 }
 
-// ── Pulse animation (only redraws dot, not whole chart) ─
-let lastChartDraw = 0;
+// ── Pulse animation ────────────────────────────────────
+var lastChartDraw = 0;
 function animLoop() {
   pulsePhase += 0.08;
-  // Redraw charts at 10fps for pulsing dot (not 60fps)
-  const now = Date.now();
+  var now = Date.now();
   if (now - lastChartDraw > 100 && lastData) {
     lastChartDraw = now;
-    for (const sym of SYMBOLS) {
-      const hist = lastData.history?.[sym];
+    for (var s = 0; s < SYMBOLS.length; s++) {
+      var sym = SYMBOLS[s];
+      var hist = lastData.history && lastData.history[sym];
       if (hist && hist.length > 1) drawChart(sym, hist);
     }
   }
@@ -269,36 +293,35 @@ function animLoop() {
 requestAnimationFrame(animLoop);
 
 // ── Chart hover ────────────────────────────────────────
-SYMBOLS.forEach((sym) => {
-  const chartEl = document.querySelector(`.card[data-symbol="${sym}"] .card__chart`);
+SYMBOLS.forEach(function(sym) {
+  var chartEl = document.querySelector('.card[data-symbol="' + sym + '"] .card__chart');
   if (!chartEl) return;
 
-  const tooltip = document.getElementById(`tooltip-${sym}`);
-  const canvas = document.getElementById(`chart-${sym}`);
-  let hovering = false;
+  var tooltip = document.getElementById("tooltip-" + sym);
+  var canvas = document.getElementById("chart-" + sym);
 
-  chartEl.addEventListener("mousemove", (e) => {
-    const data = chartDataCache[sym];
+  chartEl.addEventListener("mousemove", function(e) {
+    var data = chartDataCache[sym];
     if (!data || !data.points.length) return;
-    hovering = true;
 
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
+    var rect = canvas.getBoundingClientRect();
+    var mx = e.clientX - rect.left;
 
-    let closest = 0, minDist = Infinity;
-    data.points.forEach((pt, i) => {
-      const dist = Math.abs(pt.x - mx);
+    var closest = 0, minDist = Infinity;
+    data.points.forEach(function(pt, i) {
+      var dist = Math.abs(pt.x - mx);
       if (dist < minDist) { minDist = dist; closest = i; }
     });
 
-    const pt = data.points[closest];
-    const val = data.values[closest];
-    const ts = data.timestamps[closest];
+    var pt = data.points[closest];
+    var val = data.values[closest];
+    var ts = data.timestamps[closest];
 
     // Redraw then overlay crosshair
-    drawChart(sym, lastData?.history?.[sym]);
-    const ctx = canvas.getContext("2d");
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var h = lastData && lastData.history && lastData.history[sym];
+    if (h) drawChart(sym, h);
+    var ctx = canvas.getContext("2d");
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -327,17 +350,15 @@ SYMBOLS.forEach((sym) => {
     ctx.restore();
 
     // Tooltip
-    const dec = 3;
-    let text = `$${fmt(val, dec)}`;
+    var text = "$" + fmt(val, 3);
     if (ts) {
-      text += `  ${ts.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${ts.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+      text += "  " + ts.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " + ts.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
     }
     tooltip.textContent = text;
     tooltip.style.display = "block";
   });
 
-  chartEl.addEventListener("mouseleave", () => {
-    hovering = false;
+  chartEl.addEventListener("mouseleave", function() {
     tooltip.style.display = "none";
   });
 });
@@ -347,31 +368,29 @@ function applyData(data) {
   lastFetchTime = Date.now();
 
   // Market status
-  const ml = document.getElementById("marketLine");
+  var ml = document.getElementById("marketLine");
   if (data.marketSummary) {
-    const ms = data.marketSummary;
+    var ms = data.marketSummary;
     marketOpen = ms.status === "open";
-    const label = ml.querySelector(".market-badge__label");
-    const value = ml.querySelector(".market-badge__value");
+    var label = ml.querySelector(".market-badge__label");
+    var value = ml.querySelector(".market-badge__value");
     if (label) label.textContent = marketOpen ? "MARKET OPEN" : "MARKET CLOSED";
     if (value) {
       if (ms.untilClose) {
-        value.textContent = `closes in ${ms.untilClose} (${ms.closeTime})`;
+        value.textContent = "closes in " + ms.untilClose + " (" + ms.closeTime + ")";
       } else if (ms.untilOpen) {
-        value.textContent = `opens in ${ms.untilOpen} (${ms.openTime})`;
+        value.textContent = "opens in " + ms.untilOpen + " (" + ms.openTime + ")";
       } else {
         value.textContent = "";
       }
     }
   }
 
-  // When market is closed and we already have data, keep old prices — don't update
+  // When market is closed and we already have data, keep old prices
   if (!marketOpen && lastData) {
-    // Only update market status display, history and source info, but not prices
     lastData.marketSummary = data.marketSummary;
-    // Update status pill to show "Closed"
-    const pill = document.getElementById("statusPill");
-    const connText = document.getElementById("connection");
+    var pill = document.getElementById("statusPill");
+    var connText = document.getElementById("connection");
     pill.classList.remove("is-error");
     connText.textContent = "Closed";
     return;
@@ -379,24 +398,21 @@ function applyData(data) {
 
   lastData = data;
 
-  for (const sym of SYMBOLS) {
-    const p = data.prices?.[sym];
+  for (var s = 0; s < SYMBOLS.length; s++) {
+    var sym = SYMBOLS[s];
+    var p = data.prices && data.prices[sym];
     if (!p) continue;
 
-    // Update server base price (micro-tick will interpolate from here)
     serverPrices[sym] = p.price;
     if (p.bid && p.ask) serverBidAsk[sym] = { bid: p.bid, ask: p.ask };
-    // Initialize display price if first load
     if (!displayPrices[sym]) displayPrices[sym] = p.price;
 
-    // Bid / Ask
-    const bidEl = document.getElementById(`bid-${sym}`);
-    const askEl = document.getElementById(`ask-${sym}`);
-    if (bidEl) bidEl.textContent = `$${fmt(p.bid)}`;
-    if (askEl) askEl.textContent = `$${fmt(p.ask)}`;
+    var bidEl = document.getElementById("bid-" + sym);
+    var askEl = document.getElementById("ask-" + sym);
+    if (bidEl) bidEl.textContent = "$" + fmt(p.bid);
+    if (askEl) askEl.textContent = "$" + fmt(p.ask);
 
-    // Delta badge
-    const deltaEl = document.getElementById(`delta-${sym}`);
+    var deltaEl = document.getElementById("delta-" + sym);
     if (deltaEl) {
       deltaEl.textContent = fmtDelta(p.dayChange, p.dayChangePercent);
       deltaEl.classList.remove("is-up", "is-down", "is-flat");
@@ -405,74 +421,89 @@ function applyData(data) {
       );
     }
 
-    // Arrow
-    const arrow = document.getElementById(`arrow-${sym}`);
+    var arrow = document.getElementById("arrow-" + sym);
     if (arrow) {
       arrow.classList.remove("is-down");
       if (p.dayChange < 0) arrow.classList.add("is-down");
     }
 
-    // Range & Spread
-    const dec = 3;
-    const rangeEl = document.getElementById(`range-${sym}`);
-    if (rangeEl) rangeEl.textContent = `$${fmt(p.dayLow, dec)} – $${fmt(p.dayHigh, dec)}`;
+    var rangeEl = document.getElementById("range-" + sym);
+    if (rangeEl) rangeEl.textContent = "$" + fmt(p.dayLow, 3) + " – $" + fmt(p.dayHigh, 3);
 
-    const spreadEl = document.getElementById(`spread-${sym}`);
+    var spreadEl = document.getElementById("spread-" + sym);
     if (spreadEl && p.bid && p.ask) {
-      const sv = (p.ask - p.bid).toFixed(3);
-      spreadEl.textContent = `$${sv}`;
+      spreadEl.textContent = "$" + (p.ask - p.bid).toFixed(3);
     }
   }
 
   // Status pill
-  const pill = document.getElementById("statusPill");
-  const connText = document.getElementById("connection");
+  var pill = document.getElementById("statusPill");
+  var connText = document.getElementById("connection");
   pill.classList.remove("is-error");
   connText.textContent = data.sourceMode === "live" ? "Live" : "Delayed";
 
   // Footer
-  document.getElementById("sourceInfo").textContent = `Source: ${data.source || "--"}`;
+  document.getElementById("sourceInfo").textContent = "Source: " + (data.source || "--");
   document.getElementById("lastRefresh").textContent = new Date().toLocaleTimeString("en-US", { hour12: false });
 }
 
 // ── Tick age ───────────────────────────────────────────
-setInterval(() => {
-  const el = document.getElementById("tickAge");
+setInterval(function() {
+  var el = document.getElementById("tickAge");
   if (!lastFetchTime) return;
-  const ago = ((Date.now() - lastFetchTime) / 1000).toFixed(0);
-  el.textContent = `${ago}s ago`;
+  var ago = ((Date.now() - lastFetchTime) / 1000).toFixed(0);
+  el.textContent = ago + "s ago";
 }, 200);
 
 // ── Fetch loop ─────────────────────────────────────────
-async function fetchPrices() {
+function fetchPrices() {
+  var controller = null;
+  var timeoutId = null;
   try {
-    const res = await fetch(`/api/prices?t=${Date.now()}`, {
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    applyData(data);
-  } catch (err) {
-    console.warn("Fetch error:", err.message);
-    const pill = document.getElementById("statusPill");
-    const connText = document.getElementById("connection");
-    pill.classList.add("is-error");
-    connText.textContent = "Reconnecting";
+    // Use AbortController if available, otherwise plain fetch
+    if (typeof AbortController !== "undefined") {
+      controller = new AbortController();
+      timeoutId = setTimeout(function() { controller.abort(); }, 4000);
+    }
+  } catch (e) {
+    controller = null;
   }
+
+  var opts = {};
+  if (controller) opts.signal = controller.signal;
+
+  fetch("/api/prices?t=" + Date.now(), opts)
+    .then(function(res) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    })
+    .then(function(data) {
+      applyData(data);
+    })
+    .catch(function(err) {
+      if (timeoutId) clearTimeout(timeoutId);
+      console.warn("Fetch error:", err.message || err);
+      var pill = document.getElementById("statusPill");
+      var connText = document.getElementById("connection");
+      pill.classList.add("is-error");
+      connText.textContent = "Reconnecting";
+    });
 }
 
 fetchPrices();
-// Poll every second when open, every 30s when closed (just to detect market open)
-setInterval(() => {
-  const interval = marketOpen ? POLL_MS : 30000;
+// Poll every second when open, every 30s when closed
+setInterval(function() {
+  var interval = marketOpen ? POLL_MS : 30000;
   if (Date.now() - lastFetchTime >= interval) fetchPrices();
 }, POLL_MS);
 
 // Redraw on resize
-window.addEventListener("resize", () => {
+window.addEventListener("resize", function() {
   if (!lastData) return;
-  for (const sym of SYMBOLS) {
-    const hist = lastData.history?.[sym];
+  for (var s = 0; s < SYMBOLS.length; s++) {
+    var sym = SYMBOLS[s];
+    var hist = lastData.history && lastData.history[sym];
     if (hist && hist.length > 1) drawChart(sym, hist);
   }
 });
