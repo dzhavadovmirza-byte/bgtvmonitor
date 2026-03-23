@@ -443,8 +443,8 @@ function applyData(data) {
     if (rangeEl) rangeEl.textContent = "$" + fmt(p.dayLow, 3) + " – $" + fmt(p.dayHigh, 3);
 
     var spreadEl = document.getElementById("spread-" + sym);
-    if (spreadEl && p.bid && p.ask) {
-      spreadEl.textContent = "$" + (p.ask - p.bid).toFixed(3);
+    if (spreadEl && p.dayHigh != null && p.dayLow != null) {
+      spreadEl.textContent = "$" + fmt(p.dayHigh - p.dayLow, 3);
     }
   }
 
