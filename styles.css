@@ -385,33 +385,39 @@ body {
 .prayer-pill {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 16px 6px 12px;
+  gap: 8px;
+  padding: 8px 20px 8px 14px;
   border-radius: 24px;
-  background: rgba(139, 156, 244, 0.1);
-  border: 1px solid rgba(139, 156, 244, 0.2);
-  font-size: clamp(14px, 1.4vw, 18px);
-  font-weight: 600;
-  color: #a5b4fc;
+  background: rgba(139, 156, 244, 0.18);
+  border: 1.5px solid rgba(165, 180, 252, 0.55);
+  font-size: clamp(15px, 1.5vw, 20px);
+  font-weight: 700;
+  color: #c7d2fe;
   white-space: nowrap;
-  transition: var(--transition);
+  box-shadow: 0 0 18px rgba(139, 156, 244, 0.25), inset 0 0 12px rgba(139, 156, 244, 0.08);
+  animation: prayerPulse 3s ease-in-out infinite;
+}
+@keyframes prayerPulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(139,156,244,0.25), inset 0 0 12px rgba(139,156,244,0.08); }
+  50%       { box-shadow: 0 0 28px rgba(139,156,244,0.55), inset 0 0 16px rgba(139,156,244,0.15); }
 }
 .prayer__icon {
-  font-size: 1.1em;
-  opacity: 0.85;
+  font-size: 1.15em;
 }
 .prayer__name {
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-weight: 800;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
+  color: #e0e7ff;
 }
 .prayer__sep {
-  opacity: 0.35;
+  opacity: 0.45;
+  color: #a5b4fc;
 }
 .prayer__countdown {
   font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.7);
-  font-weight: 500;
+  color: #fff;
+  font-weight: 600;
 }
 
 /* ── Big TV mode (?big=1 in URL) ──────────────────────── */
