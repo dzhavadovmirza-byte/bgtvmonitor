@@ -34,22 +34,26 @@ function prayerToMinutes(timeStr) {
 function updatePrayerWidget() {
   if (!prayerTimings) return;
   var dubai = getDubaiNow();
-  var nowMins = dubai.getHours() * 60 + dubai.getMinutes();
+  var nowSecs = dubai.getHours() * 3600 + dubai.getMinutes() * 60 + dubai.getSeconds();
   var nextName = null;
-  var nextMins = null;
+  var nextSecs = null;
   for (var i = 0; i < PRAYER_ORDER.length; i++) {
     var name = PRAYER_ORDER[i];
-    var pm = prayerToMinutes(prayerTimings[name]);
-    if (pm > nowMins) { nextName = name; nextMins = pm; break; }
+    var ps = prayerToMinutes(prayerTimings[name]) * 60;
+    if (ps > nowSecs) { nextName = name; nextSecs = ps; break; }
   }
   if (!nextName) { // after Isha — show tomorrow's Fajr
     nextName = "Fajr";
-    nextMins = prayerToMinutes(prayerTimings["Fajr"]) + 1440;
+    nextSecs = prayerToMinutes(prayerTimings["Fajr"]) * 60 + 86400;
   }
-  var diff = nextMins - nowMins;
-  var h = Math.floor(diff / 60);
-  var m = diff % 60;
-  var countdown = h > 0 ? (h + "h " + m + "m") : (m + "m");
+  var diff = nextSecs - nowSecs;
+  var h = Math.floor(diff / 3600);
+  var m = Math.floor((diff % 3600) / 60);
+  var s = diff % 60;
+  var pad = function(n) { return n < 10 ? "0" + n : "" + n; };
+  var countdown = h > 0
+    ? (h + "h " + pad(m) + "m " + pad(s) + "s")
+    : (m + "m " + pad(s) + "s");
   var nameEl = document.getElementById("prayerName");
   var countEl = document.getElementById("prayerCountdown");
   if (nameEl) nameEl.textContent = nextName.toUpperCase();
@@ -76,7 +80,8 @@ function fetchPrayerTimes() {
 }
 
 fetchPrayerTimes();
-setInterval(function() { fetchPrayerTimes(); updatePrayerWidget(); }, 60000);
+setInterval(updatePrayerWidget, 1000);
+setInterval(fetchPrayerTimes, 60000);
 
 var POLL_MS = 1000;
 var MICRO_TICK_MS = 400;
