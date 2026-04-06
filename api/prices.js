@@ -335,7 +335,7 @@ function ensureHistory(prices) {
 
     if (needsRegen) {
       const base = currentPrice;
-      const vol = base * 0.005; // 0.5% per step — realistic weekly gold/silver range
+      const vol = sym === "XAU" ? base * 0.001 : base * 0.0015; // subtle synthetic variation
       const now = Date.now();
       const daySeed = Math.floor(now / 86400000);
       const rand = seededRandom(daySeed + (sym === "XAU" ? 1 : 2));
