@@ -16,19 +16,45 @@ try {
 
 // ── Prayer Times (Dubai) ───────────────────────────────
 var PRAYER_ORDER = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
-var prayerTimings = null;
+var prayerTimings = null;      // today's timings
+var prayerTimingsTmrw = null;  // tomorrow's Fajr (for after-Isha countdown)
 var prayerFetchedDate = "";
 
 function getDubaiNow() {
   var now = new Date();
   var utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  return new Date(utc + 4 * 3600000); // UTC+4
+  return new Date(utc + 4 * 3600000); // UTC+4 fixed (Dubai never observes DST)
+}
+
+function dubaiDateStr(d) {
+  // Returns DD-MM-YYYY for Aladhan API
+  var day = d.getDate();
+  var mon = d.getMonth() + 1;
+  return (day < 10 ? "0" + day : day) + "-" +
+         (mon < 10 ? "0" + mon : mon) + "-" +
+         d.getFullYear();
 }
 
 function prayerToMinutes(timeStr) {
-  var clean = timeStr.split(" ")[0]; // strip "(WIB)" etc
+  var clean = timeStr.split(" ")[0];
   var parts = clean.split(":");
   return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+function fetchTimingsForDate(dateStr, cb) {
+  var url = "https://api.aladhan.com/v1/timingsByCity/" + dateStr +
+            "?city=Dubai&country=AE&method=16";
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", url, true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    try {
+      var data = JSON.parse(xhr.responseText);
+      var t = data.data.timings;
+      cb({ Fajr: t.Fajr, Dhuhr: t.Dhuhr, Asr: t.Asr, Maghrib: t.Maghrib, Isha: t.Isha });
+    } catch(e) {}
+  };
+  try { xhr.send(); } catch(e) {}
 }
 
 function updatePrayerWidget() {
@@ -42,9 +68,13 @@ function updatePrayerWidget() {
     var ps = prayerToMinutes(prayerTimings[name]) * 60;
     if (ps > nowSecs) { nextName = name; nextSecs = ps; break; }
   }
-  if (!nextName) { // after Isha — show tomorrow's Fajr
+  if (!nextName) {
+    // After Isha — show tomorrow's Fajr with real fetched time
     nextName = "Fajr";
-    nextSecs = prayerToMinutes(prayerTimings["Fajr"]) * 60 + 86400;
+    var fajrMins = prayerTimingsTmrw
+      ? prayerToMinutes(prayerTimingsTmrw.Fajr)
+      : prayerToMinutes(prayerTimings.Fajr);
+    nextSecs = fajrMins * 60 + 86400;
   }
   var diff = nextSecs - nowSecs;
   var h = Math.floor(diff / 3600);
@@ -64,19 +94,15 @@ function fetchPrayerTimes() {
   var dubai = getDubaiNow();
   var dateKey = dubai.getFullYear() + "-" + (dubai.getMonth() + 1) + "-" + dubai.getDate();
   if (prayerFetchedDate === dateKey && prayerTimings) { updatePrayerWidget(); return; }
-  var xhr = new XMLHttpRequest();
-  xhr.open("GET", "https://api.aladhan.com/v1/timingsByCity?city=Dubai&country=AE&method=16", true);
-  xhr.onreadystatechange = function() {
-    if (xhr.readyState !== 4) return;
-    try {
-      var data = JSON.parse(xhr.responseText);
-      var t = data.data.timings;
-      prayerTimings = { Fajr: t.Fajr, Dhuhr: t.Dhuhr, Asr: t.Asr, Maghrib: t.Maghrib, Isha: t.Isha };
-      prayerFetchedDate = dateKey;
-      updatePrayerWidget();
-    } catch(e) {}
-  };
-  try { xhr.send(); } catch(e) {}
+  var todayStr = dubaiDateStr(dubai);
+  fetchTimingsForDate(todayStr, function(timings) {
+    prayerTimings = timings;
+    prayerFetchedDate = dateKey;
+    updatePrayerWidget();
+    // Also fetch tomorrow for accurate after-Isha Fajr countdown
+    var tmrw = new Date(dubai.getTime() + 86400000);
+    fetchTimingsForDate(dubaiDateStr(tmrw), function(t) { prayerTimingsTmrw = t; });
+  });
 }
 
 fetchPrayerTimes();
