@@ -20,9 +20,14 @@ var prayerTimings = null;      // today's timings
 var prayerTimingsTmrw = null;  // tomorrow's Fajr (for after-Isha countdown)
 var prayerFetchedDate = "";
 var prayerNotifiedToday = {};  // { "Fajr": true, ... } — avoid re-triggering
-var popupTimer = null;
-var popupBarTimer = null;
-var POPUP_DURATION = 120; // seconds
+var azanAudio = null;
+
+function getAzanAudio() {
+  if (!azanAudio) {
+    azanAudio = document.getElementById("azanAudio");
+  }
+  return azanAudio;
+}
 
 function showPrayerPopup(name, timeStr) {
   var popup = document.getElementById("prayerPopup");
@@ -32,19 +37,28 @@ function showPrayerPopup(name, timeStr) {
   if (!popup) return;
   if (nameEl) nameEl.textContent = name.toUpperCase();
   if (timeEl) timeEl.textContent = timeStr;
-  if (bar) bar.style.transform = "scaleX(1)";
   popup.className = "prayer-popup is-visible";
 
-  // Animate progress bar shrinking over POPUP_DURATION seconds
-  if (bar) {
-    setTimeout(function() {
-      bar.style.transform = "scaleX(0)";
-    }, 50);
-  }
+  // Play azan
+  var audio = getAzanAudio();
+  if (audio) {
+    audio.currentTime = 0;
+    try { audio.play(); } catch(e) {}
 
-  // Auto-close
-  if (popupTimer) clearTimeout(popupTimer);
-  popupTimer = setTimeout(function() { hidePrayerPopup(); }, POPUP_DURATION * 1000);
+    // Progress bar driven by audio duration
+    if (bar) {
+      bar.style.transition = "none";
+      bar.style.transform = "scaleX(1)";
+      setTimeout(function() {
+        var dur = audio.duration || 203; // fallback 3m23s
+        bar.style.transition = "transform " + dur + "s linear";
+        bar.style.transform = "scaleX(0)";
+      }, 80);
+    }
+
+    // Close when azan ends
+    audio.onended = function() { hidePrayerPopup(); };
+  }
 
   // Close button
   var closeBtn = document.getElementById("popupClose");
@@ -59,7 +73,11 @@ function showPrayerPopup(name, timeStr) {
 function hidePrayerPopup() {
   var popup = document.getElementById("prayerPopup");
   if (popup) popup.className = "prayer-popup";
-  if (popupTimer) { clearTimeout(popupTimer); popupTimer = null; }
+  var audio = getAzanAudio();
+  if (audio && !audio.paused) {
+    audio.pause();
+    audio.currentTime = 0;
+  }
 }
 
 function checkPrayerAlert() {
