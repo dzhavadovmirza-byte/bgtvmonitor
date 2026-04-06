@@ -321,10 +321,21 @@ function seededRandom(seed) {
 
 function ensureHistory(prices) {
   for (const sym of ["XAU", "XAG"]) {
-    if (historyStore[sym].length < 2 && prices[sym]?.price) {
-      const base = prices[sym].price;
-      // Tiny volatility: ~0.1% for gold, ~0.15% for silver — no fake spikes
-      const vol = sym === "XAU" ? base * 0.001 : base * 0.0015;
+    const store = historyStore[sym];
+    const currentPrice = prices[sym]?.price;
+    if (!currentPrice) continue;
+
+    // Regenerate if: too few points, OR synthetic tip deviates >1.5% from current price
+    // (indicates cold-start drift — stale synthetic history would cause a spike)
+    let needsRegen = store.length < 2;
+    if (!needsRegen && store.length >= 2) {
+      const syntheticTip = store[store.length - 2].price; // second-to-last (last = real push)
+      if (Math.abs(currentPrice - syntheticTip) / syntheticTip > 0.015) needsRegen = true;
+    }
+
+    if (needsRegen) {
+      const base = currentPrice;
+      const vol = base * 0.005; // 0.5% per step — realistic weekly gold/silver range
       const now = Date.now();
       const daySeed = Math.floor(now / 86400000);
       const rand = seededRandom(daySeed + (sym === "XAU" ? 1 : 2));
@@ -333,7 +344,6 @@ function ensureHistory(prices) {
       for (let i = 167; i >= 0; i--) {
         const step = (rand() - 0.5) * vol;
         p += step;
-        // Keep synthetic prices close to base — mean-revert strongly
         p += (base - p) * 0.15;
         pts.push({ price: +p.toFixed(sym === "XAU" ? 2 : 4), ts: now - i * HISTORY_INTERVAL_MS });
       }

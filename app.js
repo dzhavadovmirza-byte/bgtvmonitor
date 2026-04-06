@@ -322,15 +322,15 @@ function drawChart(symbol, history) {
     timestamps.push(typeof p === "object" && p.ts ? new Date(p.ts) : null);
   }
 
-  var dataMin = values[0], dataMax = values[0];
-  for (var i = 1; i < values.length; i++) {
-    if (values[i] < dataMin) dataMin = values[i];
-    if (values[i] > dataMax) dataMax = values[i];
-  }
-  var dataRange = dataMax - dataMin || 1;
+  // P5-P95 percentile Y-axis: one outlier won't compress the rest of the chart.
+  // Values outside the range are clamped visually; tooltips still show real prices.
+  var sorted = values.slice(0).sort(function(a, b) { return a - b; });
+  var p5idx  = Math.max(0, Math.floor(sorted.length * 0.05));
+  var p95idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+  var dataRange = sorted[p95idx] - sorted[p5idx] || 1;
   var minRange = symbol === "XAU" ? 40 : 1.5;
   var range = Math.max(dataRange, minRange);
-  var mid = (dataMin + dataMax) / 2;
+  var mid = (sorted[p5idx] + sorted[p95idx]) / 2;
   var min = mid - range / 2;
   var max = mid + range / 2;
 
@@ -340,7 +340,7 @@ function drawChart(symbol, history) {
   var xStep = cW / (values.length - 1);
 
   function toX(idx) { return pad.l + idx * xStep; }
-  function toY(v) { return pad.t + cH - ((v - min) / range) * cH; }
+  function toY(v) { var c = v < min ? min : v > max ? max : v; return pad.t + cH - ((c - min) / range) * cH; }
 
   ctx.clearRect(0, 0, W, H);
 
