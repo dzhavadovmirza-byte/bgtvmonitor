@@ -19,6 +19,66 @@ var PRAYER_ORDER = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
 var prayerTimings = null;      // today's timings
 var prayerTimingsTmrw = null;  // tomorrow's Fajr (for after-Isha countdown)
 var prayerFetchedDate = "";
+var prayerNotifiedToday = {};  // { "Fajr": true, ... } — avoid re-triggering
+var popupTimer = null;
+var popupBarTimer = null;
+var POPUP_DURATION = 120; // seconds
+
+function showPrayerPopup(name, timeStr) {
+  var popup = document.getElementById("prayerPopup");
+  var nameEl = document.getElementById("popupName");
+  var timeEl = document.getElementById("popupTime");
+  var bar = document.getElementById("popupBar");
+  if (!popup) return;
+  if (nameEl) nameEl.textContent = name.toUpperCase();
+  if (timeEl) timeEl.textContent = timeStr;
+  if (bar) bar.style.transform = "scaleX(1)";
+  popup.className = "prayer-popup is-visible";
+
+  // Animate progress bar shrinking over POPUP_DURATION seconds
+  if (bar) {
+    setTimeout(function() {
+      bar.style.transform = "scaleX(0)";
+    }, 50);
+  }
+
+  // Auto-close
+  if (popupTimer) clearTimeout(popupTimer);
+  popupTimer = setTimeout(function() { hidePrayerPopup(); }, POPUP_DURATION * 1000);
+
+  // Close button
+  var closeBtn = document.getElementById("popupClose");
+  if (closeBtn) {
+    closeBtn.onclick = function() { hidePrayerPopup(); };
+  }
+  popup.onclick = function(e) {
+    if (e.target === popup) hidePrayerPopup();
+  };
+}
+
+function hidePrayerPopup() {
+  var popup = document.getElementById("prayerPopup");
+  if (popup) popup.className = "prayer-popup";
+  if (popupTimer) { clearTimeout(popupTimer); popupTimer = null; }
+}
+
+function checkPrayerAlert() {
+  if (!prayerTimings) return;
+  var dubai = getDubaiNow();
+  var nowMins = dubai.getHours() * 60 + dubai.getMinutes();
+  var nowSecs = dubai.getSeconds();
+  // Fire in the first 5 seconds of the prayer minute
+  if (nowSecs > 5) return;
+  for (var i = 0; i < PRAYER_ORDER.length; i++) {
+    var name = PRAYER_ORDER[i];
+    var pm = prayerToMinutes(prayerTimings[name]);
+    if (pm === nowMins && !prayerNotifiedToday[name]) {
+      prayerNotifiedToday[name] = true;
+      showPrayerPopup(name, prayerTimings[name].split(" ")[0]);
+      break;
+    }
+  }
+}
 
 function getDubaiNow() {
   var now = new Date();
@@ -98,6 +158,7 @@ function fetchPrayerTimes() {
   fetchTimingsForDate(todayStr, function(timings) {
     prayerTimings = timings;
     prayerFetchedDate = dateKey;
+    prayerNotifiedToday = {}; // new day — reset notifications
     updatePrayerWidget();
     // Also fetch tomorrow for accurate after-Isha Fajr countdown
     var tmrw = new Date(dubai.getTime() + 86400000);
@@ -106,7 +167,7 @@ function fetchPrayerTimes() {
 }
 
 fetchPrayerTimes();
-setInterval(updatePrayerWidget, 1000);
+setInterval(function() { updatePrayerWidget(); checkPrayerAlert(); }, 1000);
 setInterval(fetchPrayerTimes, 60000);
 
 var POLL_MS = 1000;
