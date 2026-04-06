@@ -14,6 +14,70 @@ try {
   }
 } catch (e) {}
 
+// ── Prayer Times (Dubai) ───────────────────────────────
+var PRAYER_ORDER = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
+var prayerTimings = null;
+var prayerFetchedDate = "";
+
+function getDubaiNow() {
+  var now = new Date();
+  var utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  return new Date(utc + 4 * 3600000); // UTC+4
+}
+
+function prayerToMinutes(timeStr) {
+  var clean = timeStr.split(" ")[0]; // strip "(WIB)" etc
+  var parts = clean.split(":");
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+function updatePrayerWidget() {
+  if (!prayerTimings) return;
+  var dubai = getDubaiNow();
+  var nowMins = dubai.getHours() * 60 + dubai.getMinutes();
+  var nextName = null;
+  var nextMins = null;
+  for (var i = 0; i < PRAYER_ORDER.length; i++) {
+    var name = PRAYER_ORDER[i];
+    var pm = prayerToMinutes(prayerTimings[name]);
+    if (pm > nowMins) { nextName = name; nextMins = pm; break; }
+  }
+  if (!nextName) { // after Isha — show tomorrow's Fajr
+    nextName = "Fajr";
+    nextMins = prayerToMinutes(prayerTimings["Fajr"]) + 1440;
+  }
+  var diff = nextMins - nowMins;
+  var h = Math.floor(diff / 60);
+  var m = diff % 60;
+  var countdown = h > 0 ? (h + "h " + m + "m") : (m + "m");
+  var nameEl = document.getElementById("prayerName");
+  var countEl = document.getElementById("prayerCountdown");
+  if (nameEl) nameEl.textContent = nextName.toUpperCase();
+  if (countEl) countEl.textContent = countdown;
+}
+
+function fetchPrayerTimes() {
+  var dubai = getDubaiNow();
+  var dateKey = dubai.getFullYear() + "-" + (dubai.getMonth() + 1) + "-" + dubai.getDate();
+  if (prayerFetchedDate === dateKey && prayerTimings) { updatePrayerWidget(); return; }
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", "https://api.aladhan.com/v1/timingsByCity?city=Dubai&country=AE&method=16", true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    try {
+      var data = JSON.parse(xhr.responseText);
+      var t = data.data.timings;
+      prayerTimings = { Fajr: t.Fajr, Dhuhr: t.Dhuhr, Asr: t.Asr, Maghrib: t.Maghrib, Isha: t.Isha };
+      prayerFetchedDate = dateKey;
+      updatePrayerWidget();
+    } catch(e) {}
+  };
+  try { xhr.send(); } catch(e) {}
+}
+
+fetchPrayerTimes();
+setInterval(function() { fetchPrayerTimes(); updatePrayerWidget(); }, 60000);
+
 var POLL_MS = 1000;
 var MICRO_TICK_MS = 400;
 var SYMBOLS = ["XAU", "XAG"];
