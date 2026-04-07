@@ -1,6 +1,7 @@
 // Vercel serverless: /api/prices
-// Primary source: Binance REST (XAUTUSDT) — no API key, free, reliable
-// Fallback chain: Binance → Kitco → Stooq → CurrencyAPI → lastKnown (frozen)
+// Primary source: ByBit REST (XAUTUSDT) — no API key, free, reliable, works from Vercel/AWS
+// Note: Binance.com blocks Vercel/AWS IPs — ByBit does not
+// Fallback chain: ByBit → Kitco → Stooq → CurrencyAPI → Simulated (from lastKnown)
 
 // ── Module-level state (persists across warm invocations) ──
 let cache = { data: null, ts: 0 };
@@ -105,69 +106,49 @@ function getMarketSummary() {
   };
 }
 
-// ── Source 1: Binance REST (XAUTUSDT + XAGUSD via XAG) ──
-// XAUT = Tether Gold, 1 XAUT = 1 troy oz of gold. Tracks spot very closely.
-// For silver: XAGUSD not on Binance spot — use Stooq/Kitco for XAG.
-async function fetchBinance() {
-  // Fetch XAUT/USDT (gold) and XAGUSDT if available
-  const [xautRes, xagRes] = await Promise.allSettled([
-    fetchWithTimeout("https://api.binance.com/api/v3/ticker/24hr?symbol=XAUTUSDT", 3000),
-    fetchWithTimeout("https://api.binance.com/api/v3/ticker/24hr?symbol=XAGUSDТ", 3000),
-  ]);
+// ── Source 1: ByBit REST (XAUTUSDT) ─────────────────────
+// ByBit works from Vercel/AWS. Binance.com blocks those IPs.
+// XAUT = Tether Gold, 1 XAUT = 1 troy oz. Tracks London spot very closely.
+// Silver (XAGUSD) is not listed on ByBit spot — filled by fallback.
+async function fetchByBit() {
+  const res = await fetchWithTimeout(
+    "https://api.bybit.com/v5/market/tickers?category=spot&symbol=XAUTUSDT",
+    3000
+  );
+  if (!res.ok) throw new Error(`ByBit HTTP error: ${res.status}`);
+  const data = await res.json();
 
-  // Gold — required
-  if (xautRes.status !== "fulfilled" || !xautRes.value.ok) {
-    throw new Error("Binance XAUT fetch failed");
-  }
-  const xaut = await xautRes.value.json();
-  const goldPrice = parseFloat(xaut.lastPrice);
-  const goldOpen  = parseFloat(xaut.openPrice);
-  const goldHigh  = parseFloat(xaut.highPrice);
-  const goldLow   = parseFloat(xaut.lowPrice);
-  if (!goldPrice || goldPrice <= 0) throw new Error("Binance XAUT invalid price");
+  if (data.retCode !== 0) throw new Error(`ByBit API error: ${data.retMsg}`);
+  const t = data?.result?.list?.[0];
+  if (!t) throw new Error("ByBit: no ticker data");
+
+  const goldPrice = parseFloat(t.lastPrice);
+  const goldOpen  = parseFloat(t.prevPrice24h);
+  const goldHigh  = parseFloat(t.highPrice24h);
+  const goldLow   = parseFloat(t.lowPrice24h);
+  const goldBid   = parseFloat(t.bid1Price);
+  const goldAsk   = parseFloat(t.ask1Price);
+
+  if (!goldPrice || goldPrice <= 0) throw new Error("ByBit XAUT invalid price");
 
   const goldChange    = +(goldPrice - goldOpen).toFixed(2);
   const goldChangePct = +(((goldPrice - goldOpen) / goldOpen) * 100).toFixed(2);
-  const spread        = +(parseFloat(xaut.askPrice) - parseFloat(xaut.bidPrice)).toFixed(2);
-  const halfSpread    = +(spread / 2).toFixed(2);
 
-  const result = {
-    source: "Binance",
+  return {
+    source: "ByBit",
     XAU: {
-      price:          +goldPrice.toFixed(2),
-      bid:            +(parseFloat(xaut.bidPrice) || goldPrice - halfSpread).toFixed(2),
-      ask:            +(parseFloat(xaut.askPrice) || goldPrice + halfSpread).toFixed(2),
-      dayHigh:        +goldHigh.toFixed(2),
-      dayLow:         +goldLow.toFixed(2),
-      dayChange:      goldChange,
+      price:            +goldPrice.toFixed(2),
+      bid:              +goldBid.toFixed(2),
+      ask:              +goldAsk.toFixed(2),
+      dayHigh:          +goldHigh.toFixed(2),
+      dayLow:           +goldLow.toFixed(2),
+      dayChange:        goldChange,
       dayChangePercent: goldChangePct,
-      open:           +goldOpen.toFixed(2),
+      open:             +goldOpen.toFixed(2),
     },
+    // Silver not available on ByBit spot — XAG will be filled by fetchSilverFallback()
+    XAG: null,
   };
-
-  // Silver — best-effort from Binance; if not available, mark null so caller can fetch separately
-  if (xagRes.status === "fulfilled" && xagRes.value.ok) {
-    try {
-      const xag = await xagRes.value.json();
-      const sp  = parseFloat(xag.lastPrice);
-      const so  = parseFloat(xag.openPrice);
-      if (sp > 0) {
-        const sc = +(sp - so).toFixed(4);
-        result.XAG = {
-          price:            +sp.toFixed(4),
-          bid:              +(parseFloat(xag.bidPrice) || sp - 0.05).toFixed(4),
-          ask:              +(parseFloat(xag.askPrice) || sp + 0.05).toFixed(4),
-          dayHigh:          +parseFloat(xag.highPrice).toFixed(4),
-          dayLow:           +parseFloat(xag.lowPrice).toFixed(4),
-          dayChange:        sc,
-          dayChangePercent: +(((sp - so) / so) * 100).toFixed(2),
-          open:             +so.toFixed(4),
-        };
-      }
-    } catch (_) { /* silver from Binance not available — will be filled by fallback */ }
-  }
-
-  return result;
 }
 
 // ── Source 2: Kitco ──────────────────────────────────────
@@ -343,39 +324,36 @@ function simulatedFromLastKnown() {
   };
 }
 
-// ── Main fetch: Binance first, then fallbacks ────────────
+// ── Main fetch: ByBit first, then fallbacks ──────────────
 async function fetchPrices() {
-  // Try Binance first — it's the most reliable and has no rate limit for public endpoints
+  // Try ByBit first — reliable from Vercel/AWS, no API key needed
   try {
-    const binance = await fetchBinance();
+    const bybit = await fetchByBit();
 
-    // If Binance returned gold but not silver (XAGUSD not listed on Binance spot),
-    // fill silver from the next available source in parallel
-    if (!binance.XAG) {
-      try {
-        const silverSource = await Promise.any([fetchKitco(), fetchStooq(), fetchCurrencyAPI()]);
-        binance.XAG = silverSource.XAG;
-        binance.source = `Binance+${silverSource.source}`;
-      } catch (_) {
-        // Silver unavailable — use last known or zeroed placeholder
-        binance.XAG = lastKnown.XAG.price
-          ? {
-              price:            lastKnown.XAG.price,
-              bid:              +(lastKnown.XAG.price - 0.06).toFixed(4),
-              ask:              +(lastKnown.XAG.price + 0.06).toFixed(4),
-              dayHigh:          lastKnown.XAG.price,
-              dayLow:           lastKnown.XAG.price,
-              dayChange:        0,
-              dayChangePercent: 0,
-              open:             lastKnown.XAG.open || lastKnown.XAG.price,
-            }
-          : null;
-      }
+    // ByBit doesn't list silver — fetch XAG from Kitco/Stooq/CurrencyAPI in parallel
+    try {
+      const silverSource = await Promise.any([fetchKitco(), fetchStooq(), fetchCurrencyAPI()]);
+      bybit.XAG = silverSource.XAG;
+      bybit.source = `ByBit+${silverSource.source}`;
+    } catch (_) {
+      // Silver unavailable — use last known
+      bybit.XAG = lastKnown.XAG.price
+        ? {
+            price:            lastKnown.XAG.price,
+            bid:              +(lastKnown.XAG.price - 0.06).toFixed(4),
+            ask:              +(lastKnown.XAG.price + 0.06).toFixed(4),
+            dayHigh:          lastKnown.XAG.price,
+            dayLow:           lastKnown.XAG.price,
+            dayChange:        0,
+            dayChangePercent: 0,
+            open:             lastKnown.XAG.open || lastKnown.XAG.price,
+          }
+        : null;
     }
 
-    return { ...binance, sourceMode: "live" };
-  } catch (binanceErr) {
-    // Binance failed — try remaining sources simultaneously
+    return { ...bybit, sourceMode: "live" };
+  } catch (bybitErr) {
+    // ByBit failed — try remaining sources simultaneously
     try {
       const result = await Promise.any([fetchKitco(), fetchStooq(), fetchCurrencyAPI()]);
       return { ...result, sourceMode: "live" };
