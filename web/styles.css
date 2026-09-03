@@ -662,6 +662,25 @@ body {
  * TV gets the same side-by-side layout + charts as the desktop. */
 @media (max-width: 700px) {
   .cards { grid-template-columns: 1fr; }
+
+  /* Phones: let the page scroll.
+   * The hard 100dvh / overflow:hidden board above is built for a wall-mounted
+   * TV, where everything must sit on one screen with no scrollbar. A phone in
+   * portrait cannot hold a header, two stacked cards, the footer and the
+   * ticker in one viewport, so the only flexible element — .card__chart —
+   * absorbed the whole shortfall and collapsed to a ~25px sliver.
+   * Scrolling is the natural affordance here, and the chart gets a real
+   * minimum height so it stays readable instead of being squeezed away. */
+  .app {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .card__chart { min-height: 180px; }
+
+  /* The header wraps onto several rows at this width; tighten it so it does
+   * not eat the fold before the first price. */
+  .header { gap: 8px; padding-bottom: 8px; }
 }
 
 
