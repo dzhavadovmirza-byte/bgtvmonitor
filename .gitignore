@@ -3,3 +3,5 @@
 web/news.json
 # ops backups made during live edits
 *.bak-*
+__pycache__/
+*.pyc
