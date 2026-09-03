@@ -1,0 +1,5 @@
+.vercel
+# generated on the VPS every 10 min by scripts/fetch-news.py
+web/news.json
+# ops backups made during live edits
+*.bak-*

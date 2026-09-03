@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=ticker1" />
   </head>
   <body>
     <div class="bg-glow bg-glow--gold"></div>
@@ -39,7 +39,10 @@
           </div>
         </div>
         <div class="header__right">
-          <p class="clock" id="clock">--</p>
+          <div class="clock" id="clock">
+            <span class="clock__time" id="clockTime">--:--:--</span>
+            <span class="clock__date" id="clockDate">--</span>
+          </div>
         </div>
       </header>
 
@@ -78,6 +81,10 @@
               <span class="card__meta-label">Spread</span>
               <span class="card__meta-value" id="spread-XAU">--</span>
             </div>
+            <div class="card__meta-item">
+              <span class="card__meta-label">High&ndash;Low</span>
+              <span class="card__meta-value" id="hl-XAU">--</span>
+            </div>
           </div>
         </article>
 
@@ -115,6 +122,10 @@
               <span class="card__meta-label">Spread</span>
               <span class="card__meta-value" id="spread-XAG">--</span>
             </div>
+            <div class="card__meta-item">
+              <span class="card__meta-label">High&ndash;Low</span>
+              <span class="card__meta-value" id="hl-XAG">--</span>
+            </div>
           </div>
         </article>
       </section>
@@ -124,10 +135,26 @@
         <span id="tickAge">Last tick: --</span>
         <span id="lastRefresh">--</span>
       </footer>
+
+      <div class="ticker" id="ticker">
+        <span class="ticker__badge">Market News</span>
+        <div class="ticker__viewport">
+          <div class="ticker__track" id="tickerTrack"></div>
+        </div>
+      </div>
     </main>
 
     <!-- Prayer Time Popup -->
     <audio id="azanAudio" src="/azan.mp3" preload="auto"></audio>
+    <audio id="takbeerAudio" src="/takbeer.mp3" preload="auto"></audio>
+    <div class="takbeer-popup" id="takbeerBanner">
+      <div class="takbeer-popup__backdrop"></div>
+      <div class="takbeer-popup__card">
+        <div class="takbeer-popup__glow"></div>
+        <img class="takbeer-popup__img" src="/takbeer-poster.webp" alt="تكبيرات العيد" />
+      </div>
+    </div>
+    </div>
     <div class="prayer-popup" id="prayerPopup">
       <div class="prayer-popup__card">
         <div class="prayer-popup__ornament">&#10022; &#9789; &#10022;</div>
@@ -142,6 +169,6 @@
       </div>
     </div>
 
-    <script src="/app.js"></script>
+    <script src="/app.js?v=ticker1"></script>
   </body>
 </html>

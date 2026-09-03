@@ -21,6 +21,7 @@ var prayerTimingsTmrw = null;  // tomorrow's Fajr (for after-Isha countdown)
 var prayerFetchedDate = "";
 var prayerNotifiedToday = {};  // { "Fajr": true, ... } — avoid re-triggering
 var azanAudio = null;
+var prayerPopupTimer = null;   // safety fallback: auto-close even if audio.onended never fires
 
 function getAzanAudio() {
   if (!azanAudio) {
@@ -58,6 +59,18 @@ function showPrayerPopup(name, timeStr) {
 
     // Close when azan ends
     audio.onended = function() { hidePrayerPopup(); };
+
+    // Safety fallback: some TV browsers (Samsung/Tizen) don't reliably fire
+    // "onended", or block autoplay so it never fires at all — which left the
+    // popup stuck open until closed by remote. Force-close after the azan
+    // length (+10s buffer) no matter what.
+    if (prayerPopupTimer) { clearTimeout(prayerPopupTimer); }
+    var fallbackSec = (audio.duration && isFinite(audio.duration)) ? (audio.duration + 10) : 213;
+    prayerPopupTimer = setTimeout(function() { hidePrayerPopup(); }, fallbackSec * 1000);
+  } else {
+    // No audio element at all — still auto-close after ~azan length.
+    if (prayerPopupTimer) { clearTimeout(prayerPopupTimer); }
+    prayerPopupTimer = setTimeout(function() { hidePrayerPopup(); }, 213000);
   }
 
   // Close button
@@ -71,6 +84,7 @@ function showPrayerPopup(name, timeStr) {
 }
 
 function hidePrayerPopup() {
+  if (prayerPopupTimer) { clearTimeout(prayerPopupTimer); prayerPopupTimer = null; }
   var popup = document.getElementById("prayerPopup");
   if (popup) popup.className = "prayer-popup";
   var audio = getAzanAudio();
@@ -186,29 +200,118 @@ function fetchPrayerTimes() {
 
 fetchPrayerTimes();
 setInterval(function() { updatePrayerWidget(); checkPrayerAlert(); }, 1000);
+
+// ── Eid Takbeer scheduler ──────────────────────────────
+// Plays takbeer.mp3 twice in a row every 15 minutes (Dubai time),
+// from TAKBEER_START to TAKBEER_END inclusive, skipping any slot
+// that overlaps with the azan / a prayer time (±5..+10 min window).
+var TAKBEER_START = "2026-05-25";
+var TAKBEER_END   = "2026-05-30";
+var TAKBEER_INTERVAL_MIN = 15;
+var takbeerAudio = null;
+var takbeerPlaying = false;
+var takbeerPlayCount = 0;
+var takbeerLastTrigger = "";
+
+function getTakbeerAudio() {
+  if (!takbeerAudio) takbeerAudio = document.getElementById("takbeerAudio");
+  return takbeerAudio;
+}
+
+function showTakbeerBanner() {
+  var el = document.getElementById("takbeerBanner");
+  if (el) el.className = "takbeer-popup is-visible";
+}
+function hideTakbeerBanner() {
+  var el = document.getElementById("takbeerBanner");
+  if (el) el.className = "takbeer-popup";
+}
+
+function isAzanBusy() {
+  var azan = getAzanAudio();
+  if (azan && !azan.paused) return true;
+  if (!prayerTimings) return false;
+  var now = getDubaiNow();
+  var nowMins = now.getHours() * 60 + now.getMinutes();
+  // takbeer cycle ~8 min + azan ~4 min — block slots within -5..+10 of a prayer
+  for (var i = 0; i < PRAYER_ORDER.length; i++) {
+    var pm = prayerToMinutes(prayerTimings[PRAYER_ORDER[i]]);
+    var diff = pm - nowMins;
+    if (diff >= -5 && diff <= 10) return true;
+  }
+  return false;
+}
+
+function playTakbeer() {
+  if (takbeerPlaying) return;
+  var audio = getTakbeerAudio();
+  if (!audio) return;
+  takbeerPlaying = true;
+  takbeerPlayCount = 0;
+  showTakbeerBanner();
+  function playOnce() {
+    try { audio.currentTime = 0; } catch(e) {}
+    try { audio.play(); } catch(e) {}
+  }
+  audio.onended = function() {
+    takbeerPlayCount++;
+    if (takbeerPlayCount < 1) {
+      playOnce();
+    } else {
+      takbeerPlaying = false;
+      hideTakbeerBanner();
+    }
+  };
+  playOnce();
+}
+
+function checkTakbeerSchedule() {
+  var now = getDubaiNow();
+  // ISO YYYY-MM-DD for date-range compare (dubaiDateStr returns DD-MM-YYYY for the Aladhan API)
+  var yyyy = now.getFullYear();
+  var mm = now.getMonth() + 1; if (mm < 10) mm = "0" + mm;
+  var dd = now.getDate();      if (dd < 10) dd = "0" + dd;
+  var dateKey = yyyy + "-" + mm + "-" + dd;
+  if (dateKey < TAKBEER_START || dateKey > TAKBEER_END) return;
+  // Only between 09:00 and 20:00 (Dubai). Last slot 20:00 inclusive.
+  var h = now.getHours();
+  var m = now.getMinutes();
+  var minsOfDay = h * 60 + m;
+  if (minsOfDay < 9 * 60 || minsOfDay > 20 * 60) return;
+  var s = now.getSeconds();
+  if (m % TAKBEER_INTERVAL_MIN !== 0) return;
+  if (s > 5) return;
+  var triggerKey = dateKey + " " + now.getHours() + ":" + m;
+  if (takbeerLastTrigger === triggerKey) return;
+  if (takbeerPlaying) return;
+  if (isAzanBusy()) {
+    takbeerLastTrigger = triggerKey; // skip — let azan run
+    return;
+  }
+  takbeerLastTrigger = triggerKey;
+  playTakbeer();
+}
+
+setInterval(checkTakbeerSchedule, 1000);
+
 setInterval(fetchPrayerTimes, 60000);
 
 var POLL_MS = 1000;
-var MICRO_TICK_MS = 400;
 var SYMBOLS = ["XAU", "XAG"];
 var CHART_COLORS = {
   XAU: { line: "#e8b931", fill: "232, 185, 49" },
   XAG: { line: "#a8b8d0", fill: "168, 184, 208" },
 };
 
-// Micro-tick noise amplitude (realistic spread simulation)
-var NOISE = { XAU: 0.35, XAG: 0.008 };
-
+// Real-time prices from the FIX gateway (1Hz). No synthetic noise — every
+// displayed value comes from a live Integral OCX quote.
 var serverPrices = {};   // last price from server
 var serverBidAsk = {};   // last bid/ask from server
-var displayPrices = {};  // current displayed price (with micro-ticks)
-var prevDisplay = {};    // previous display for flash direction
+var prevServerPrice = {}; // previous server price, for flash-up/down direction
 var lastData = null;
 var marketOpen = true;    // track market status — freeze indicators when closed
 var lastFetchTime = null;
 var chartDataCache = {};
-var microTickHistory = { XAU: [], XAG: [] };
-var MICRO_HIST_MAX = 60;
 
 // ── Clock ──────────────────────────────────────────────
 function tickClock() {
@@ -219,7 +322,10 @@ function tickClock() {
   var date = now.toLocaleDateString("en-US", {
     weekday: "short", month: "short", day: "numeric",
   });
-  document.getElementById("clock").textContent = time + "  " + date;
+  var tEl = document.getElementById("clockTime");
+  var dEl = document.getElementById("clockDate");
+  if (tEl) tEl.textContent = time;
+  if (dEl) dEl.textContent = date;
 }
 setInterval(tickClock, 500);
 tickClock();
@@ -247,56 +353,90 @@ function get(obj, key1, key2) {
   return v;
 }
 
-// ── Micro-tick engine ──────────────────────────────────
-function microTick() {
-  if (!marketOpen) return;
-
-  for (var s = 0; s < SYMBOLS.length; s++) {
-    var sym = SYMBOLS[s];
-    var base = serverPrices[sym];
-    if (!base) continue;
-
-    var prev = displayPrices[sym] || base;
-    var drift = (base - prev) * 0.3;
-    var noise = (Math.random() - 0.5) * 2 * NOISE[sym];
-    var newPrice = +(prev + drift + noise).toFixed(3);
-
-    prevDisplay[sym] = displayPrices[sym];
-    displayPrices[sym] = newPrice;
-
-    var el = document.getElementById("price-" + sym);
-    if (el) {
-      el.textContent = "$" + fmt(newPrice, 3);
-
-      el.classList.remove("flash-up", "flash-down");
-      if (prevDisplay[sym] != null && Math.abs(newPrice - prevDisplay[sym]) > 0.001) {
-        el.offsetHeight; // force reflow
-        el.classList.add(newPrice > prevDisplay[sym] ? "flash-up" : "flash-down");
-        (function(e) {
-          setTimeout(function() { e.classList.remove("flash-up", "flash-down"); }, 400);
-        })(el);
-      }
-    }
-
-    var ba = serverBidAsk[sym];
-    if (ba) {
-      var spread = ba.ask - ba.bid;
-      var bidEl = document.getElementById("bid-" + sym);
-      var askEl = document.getElementById("ask-" + sym);
-      var microBid = +(newPrice - spread / 2).toFixed(3);
-      var microAsk = +(newPrice + spread / 2).toFixed(3);
-      if (bidEl) bidEl.textContent = "$" + fmt(microBid);
-      if (askEl) askEl.textContent = "$" + fmt(microAsk);
-    }
-
-    microTickHistory[sym].push(newPrice);
-    if (microTickHistory[sym].length > MICRO_HIST_MAX) {
-      microTickHistory[sym].shift();
-    }
+// updatePriceCell — render one symbol's price cell from a real server tick,
+// with a brief flash-up/down animation on the direction of change. Called
+// from applyData on every successful /api/prices response (1Hz).
+function updatePriceCell(sym, price) {
+  if (price == null || isNaN(price)) return;
+  var el = document.getElementById("price-" + sym);
+  if (!el) return;
+  el.textContent = "$" + fmt(price, 3);
+  var prev = prevServerPrice[sym];
+  if (prev != null && Math.abs(price - prev) > 0.0001) {
+    el.classList.remove("flash-up", "flash-down");
+    el.offsetHeight; // force reflow so the animation re-triggers
+    el.classList.add(price > prev ? "flash-up" : "flash-down");
+    (function(e) {
+      setTimeout(function() { e.classList.remove("flash-up", "flash-down"); }, 400);
+    })(el);
   }
+  prevServerPrice[sym] = price;
 }
 
-setInterval(microTick, MICRO_TICK_MS);
+// smoothSeries — light moving-average smoothing over the price series.
+//
+// Why: even after suppressOutliers removes single-tick glitches, the
+// chart can still show jagged "staircase" patterns caused by 2-5 point
+// bursts (UAT feed occasionally produces a short cluster of off-market
+// prices). A 3-point centered moving average flattens those bursts
+// while preserving multi-tick legitimate moves (the average lags by
+// at most one tick).
+//
+// First and last points are kept as-is so the head/tail of the chart
+// shows the actual current price (important for the user — they're
+// looking at "current state", not a smoothed history).
+function smoothSeries(arr) {
+  if (!arr || arr.length < 3) return arr.slice();
+  var out = arr.slice();
+  for (var i = 1; i < arr.length - 1; i++) {
+    out[i] = (arr[i - 1] + arr[i] + arr[i + 1]) / 3;
+  }
+  return out;
+}
+
+// suppressOutliers — removes single-tick spikes from a price series.
+//
+// We use a robust statistics approach: compute the median absolute
+// deviation (MAD) of the difference series, then flag any point whose
+// jump from BOTH neighbours exceeds K * MAD. K=8 is intentionally loose
+// — we don't want to smooth over real fast moves (e.g., a 30-second
+// 0.3% lurch on gold), only the protocol-level glitches that show up
+// as a single point thousands of pips away.
+//
+// Replacement is linear interpolation between the two neighbours so the
+// chart line stays continuous. Endpoints are never replaced (no neighbours
+// to interpolate from) — if the very last tick is a glitch, the user
+// will see it briefly until the next tick lands, which is acceptable.
+function suppressOutliers(arr) {
+  if (!arr || arr.length < 5) return arr.slice();
+  var out = arr.slice();
+  // First-order differences |x[i] - x[i-1]|.
+  var diffs = [];
+  for (var i = 1; i < out.length; i++) {
+    diffs.push(Math.abs(out[i] - out[i - 1]));
+  }
+  // Median absolute deviation of diffs — robust to outliers themselves.
+  var sortedDiffs = diffs.slice(0).sort(function(a, b) { return a - b; });
+  var median = sortedDiffs[Math.floor(sortedDiffs.length / 2)];
+  // If the series is constant or near-constant, no outliers to find.
+  if (!median || median < 1e-9) return out;
+  var threshold = median * 8;
+
+  for (var j = 1; j < out.length - 1; j++) {
+    var prev = out[j - 1];
+    var next = out[j + 1];
+    var cur = out[j];
+    var jumpPrev = Math.abs(cur - prev);
+    var jumpNext = Math.abs(cur - next);
+    // Both sides must show an unusually large jump — that's the signature
+    // of a single-point spike. A real move would only have ONE large jump
+    // (entry into the new level), the other being normal.
+    if (jumpPrev > threshold && jumpNext > threshold) {
+      out[j] = (prev + next) / 2;
+    }
+  }
+  return out;
+}
 
 // ── Chart drawing ──────────────────────────────────────
 var pulsePhase = 0;
@@ -321,6 +461,19 @@ function drawChart(symbol, history) {
     values.push(typeof p === "object" ? p.price : p);
     timestamps.push(typeof p === "object" && p.ts ? new Date(p.ts) : null);
   }
+
+  // Outlier suppression. Single-tick spikes in the history (upstream feed
+  // glitches) produce a tall narrow tower on the chart that doesn't reflect
+  // what actually happened in the market. We replace such points with the
+  // linear interpolation of their neighbours. Legitimate fast moves persist
+  // across multiple ticks and are preserved.
+  values = suppressOutliers(values);
+  // Light smoothing on top. suppressOutliers catches lone spikes; this
+  // catches short 2-5 point bursts that the outlier filter leaves alone
+  // (because the burst's neighbours are themselves spiky, so MAD-based
+  // detection is fooled). A 3-point moving average lags by at most one
+  // tick and produces visibly cleaner lines for the dashboard use case.
+  values = smoothSeries(values);
 
   // P5-P95 percentile Y-axis: one outlier won't compress the rest of the chart.
   // Values outside the range are clamped visually; tooltips still show real prices.
@@ -360,8 +513,19 @@ function drawChart(symbol, history) {
   ctx.font = "10px Inter, sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  ctx.fillText(max.toFixed(3), W - 4, pad.t + 4);
-  ctx.fillText(min.toFixed(3), W - 4, H - pad.b - 4);
+  // The pulsing endpoint dot is pinned to the right edge (x = W - pad.r) and
+  // is painted *after* these labels, so whenever the latest price sits near
+  // the top or bottom of the range the dot lands straight on top of a
+  // right-aligned label and hides the number. Flip only the label it would
+  // collide with over to the left edge instead.
+  var endLabelY = values.length ? toY(values[values.length - 1]) : -999;
+  function drawRangeLabel(text, ly) {
+    var collides = Math.abs(ly - endLabelY) < 16; // dot glow (<=10) + text half-height
+    ctx.textAlign = collides ? "left" : "right";
+    ctx.fillText(text, collides ? pad.l + 4 : W - 4, ly);
+  }
+  drawRangeLabel(max.toFixed(3), pad.t + 4);
+  drawRangeLabel(min.toFixed(3), H - pad.b - 4);
 
   var colors = CHART_COLORS[symbol];
   var lineColor = colors.line;
@@ -422,15 +586,29 @@ function drawChart(symbol, history) {
   ctx.fillStyle = lineColor;
   ctx.fill();
 
-  // Day labels
+  // Day labels — render with a minimum-pixel-distance guard so that days
+  // close together on the X axis (common when the history has uneven
+  // coverage across the week) don't overlap into unreadable "FMonTue".
+  // We greedy-keep the leftmost label and drop any subsequent label
+  // whose center is within MIN_PX of the previous one we kept.
   var dayLabels = getDayLabels(timestamps, values.length);
   if (dayLabels.length) {
     ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
     ctx.font = "600 11px Inter, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
+    // The first day's marker sits at x = pad.l, so a centred label used to
+    // spill past the left edge and render clipped ("Mon" showing as "on").
+    // Clamp every label fully inside the plot area, and space them by their
+    // measured width instead of a fixed guess so wider labels never touch.
+    var lastDrawnRight = -Infinity;
     for (var d = 0; d < dayLabels.length; d++) {
-      ctx.fillText(dayLabels[d].label, toX(dayLabels[d].idx), H - pad.b + 8);
+      var xPos = toX(dayLabels[d].idx);
+      var halfW = ctx.measureText(dayLabels[d].label).width / 2;
+      var drawX = Math.min(Math.max(xPos, pad.l + halfW), W - pad.r - halfW);
+      if (drawX - halfW < lastDrawnRight + 8) continue; // 8px breathing room
+      ctx.fillText(dayLabels[d].label, drawX, H - pad.b + 8);
+      lastDrawnRight = drawX + halfW;
     }
   }
 
@@ -457,6 +635,18 @@ function getDayLabels(timestamps, count) {
       label: timestamps[last7[j].idx].toLocaleDateString("en-US", { weekday: "short" }),
       idx: last7[j].idx,
     });
+  }
+  // A 7-day window can open and close on the same weekday (Mon 17 ... Mon 24),
+  // which renders as two identical "Mon" labels with no way to tell them
+  // apart. Add the day of the month to just those; unique weekdays stay short.
+  var counts = {};
+  for (var c = 0; c < result.length; c++) {
+    counts[result[c].label] = (counts[result[c].label] || 0) + 1;
+  }
+  for (var m = 0; m < result.length; m++) {
+    if (counts[result[m].label] > 1) {
+      result[m].label += " " + timestamps[last7[m].idx].getDate();
+    }
   }
   return result;
 }
@@ -591,7 +781,8 @@ function applyData(data) {
 
     serverPrices[sym] = p.price;
     if (p.bid && p.ask) serverBidAsk[sym] = { bid: p.bid, ask: p.ask };
-    if (!displayPrices[sym]) displayPrices[sym] = p.price;
+
+    updatePriceCell(sym, p.price);
 
     var bidEl = document.getElementById("bid-" + sym);
     var askEl = document.getElementById("ask-" + sym);
@@ -616,9 +807,19 @@ function applyData(data) {
     var rangeEl = document.getElementById("range-" + sym);
     if (rangeEl) rangeEl.textContent = "$" + fmt(p.dayLow, 3) + " – $" + fmt(p.dayHigh, 3);
 
+    // Spread is ask - bid. This used to render dayHigh - dayLow, i.e. the
+    // *width of the day's range* - a duplicate of the RANGE field sitting
+    // right next to it, shown under the wrong label.
     var spreadEl = document.getElementById("spread-" + sym);
-    if (spreadEl && p.dayHigh != null && p.dayLow != null) {
-      spreadEl.textContent = "$" + fmt(p.dayHigh - p.dayLow, 3);
+    if (spreadEl && p.ask != null && p.bid != null) {
+      spreadEl.textContent = "$" + fmt(p.ask - p.bid, 3);
+    }
+
+    // High-Low: the width of the day's range, i.e. how far the metal has
+    // travelled today. RANGE next to it shows the two bounds themselves.
+    var hlEl = document.getElementById("hl-" + sym);
+    if (hlEl && p.dayHigh != null && p.dayLow != null) {
+      hlEl.textContent = "$" + fmt(p.dayHigh - p.dayLow, 3);
     }
   }
 
@@ -687,3 +888,77 @@ window.addEventListener("resize", function() {
     if (hist && hist.length > 1) drawChart(sym, hist);
   }
 });
+
+// ── ?debug=1 — on-screen viewport readout ───────────────
+// Lets us see what CSS viewport a TV actually reports, so layout//font
+// breakpoints can be tuned to the real device instead of guessed.
+try {
+  if (String(window.location.search).indexOf("debug") >= 0) {
+    var dbgBox = document.createElement("div");
+    dbgBox.style.cssText =
+      "position:fixed;left:10px;bottom:10px;z-index:99999;" +
+      "background:rgba(0,0,0,0.85);color:#0f0;font:16px monospace;" +
+      "padding:8px 12px;border:1px solid #0f0;border-radius:4px;";
+    var dbgUpdate = function() {
+      dbgBox.innerHTML =
+        "CSS viewport: " + window.innerWidth + " x " + window.innerHeight + "<br>" +
+        "devicePixelRatio: " + (window.devicePixelRatio || 1) + "<br>" +
+        "screen: " + screen.width + " x " + screen.height + "<br>" +
+        "2-col active: " + (window.innerWidth > 700 ? "YES" : "no");
+    };
+    dbgUpdate();
+    setInterval(dbgUpdate, 2000);
+    document.body.appendChild(dbgBox);
+  }
+} catch (e) {}
+
+
+// -- Market news ticker ----------------------------------
+// Yahoo's RSS feed carries no CORS header, so the page cannot read it
+// directly. A cron job on the host (scripts/fetch-news.py) republishes the
+// headlines as same-origin /news.json, which is what we poll here.
+var NEWS_URL = "/news.json";
+var NEWS_REFRESH_MS = 600000;  // 10 min - matches the cron cadence
+var TICKER_PX_PER_SEC = 55;    // reading speed, independent of headline count
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function buildTicker(items) {
+  var bar = document.getElementById("ticker");
+  var track = document.getElementById("tickerTrack");
+  if (!bar || !track || !items.length) return;
+
+  var html = "";
+  for (var pass = 0; pass < 2; pass++) {       // two copies -> seamless loop
+    for (var i = 0; i < items.length; i++) {
+      html += '<span class="ticker__item"><i class="ticker__dot"></i>' +
+              escapeHtml(items[i].title) + "</span>";
+    }
+  }
+  track.innerHTML = html;
+  bar.className = "ticker is-ready";
+
+  var half = track.offsetWidth / 2;
+  var dur = Math.max(20, Math.round(half / TICKER_PX_PER_SEC));
+  track.style.animationDuration = dur + "s";
+  track.style.webkitAnimationDuration = dur + "s";
+}
+
+function fetchNews() {
+  var xhr = new XMLHttpRequest();
+  // Cache-buster: TV browsers hold on to static files aggressively.
+  xhr.open("GET", NEWS_URL + "?t=" + Date.now(), true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4 || xhr.status !== 200) return;
+    try {
+      var data = JSON.parse(xhr.responseText);
+      if (data && data.items && data.items.length) buildTicker(data.items);
+    } catch (e) {}   // on any failure keep whatever is already scrolling
+  };
+  xhr.send();
+}
+
+fetchNews();
+setInterval(fetchNews, NEWS_REFRESH_MS);
