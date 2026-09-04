@@ -749,15 +749,23 @@ function applyData(data) {
     var ms = data.marketSummary;
     marketOpen = ms.status === "open";
     var label = ml.querySelector(".market-badge__label");
-    var value = ml.querySelector(".market-badge__value");
+    var delta = ml.querySelector(".market-badge__delta");
+    var at = ml.querySelector(".market-badge__at");
     if (label) label.textContent = marketOpen ? "MARKET OPEN" : "MARKET CLOSED";
-    if (value) {
+    // Countdown and wall-clock live in separate spans so the phone layout can
+    // hide the second half and keep the header to two rows. Both may be empty:
+    // when live quotes contradict the calendar the API reports open with no
+    // countdown at all.
+    if (delta && at) {
       if (ms.untilClose) {
-        value.textContent = "closes in " + ms.untilClose + " (" + ms.closeTime + ")";
+        delta.textContent = "closes in " + ms.untilClose;
+        at.textContent = ms.closeTime ? " (" + ms.closeTime + ")" : "";
       } else if (ms.untilOpen) {
-        value.textContent = "opens in " + ms.untilOpen + " (" + ms.openTime + ")";
+        delta.textContent = "opens in " + ms.untilOpen;
+        at.textContent = ms.openTime ? " (" + ms.openTime + ")" : "";
       } else {
-        value.textContent = "";
+        delta.textContent = "";
+        at.textContent = "";
       }
     }
   }

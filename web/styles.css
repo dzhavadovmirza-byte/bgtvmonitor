@@ -678,9 +678,40 @@ body {
   }
   .card__chart { min-height: 180px; }
 
-  /* The header wraps onto several rows at this width; tighten it so it does
-   * not eat the fold before the first price. */
-  .header { gap: 8px; padding-bottom: 8px; }
+  /* Header, phone: exactly two rows.
+   *   1)  logo ........ LIVE ........ clock
+   *   2)  prayer countdown ........ market status
+   * .header__left is dissolved with display:contents so its three children can
+   * be ordered individually and split across the break, and ::after is a
+   * zero-height full-width flex item that forces the wrap at that one point.
+   * (Mobile-only, so the old TV browser above 700px never meets either.) */
+  .header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding-bottom: 8px;
+  }
+  .header__left { display: contents; }
+  .logo { order: 1; gap: 8px; min-width: 0; }
+  .logo__dot { width: 9px; height: 9px; }
+  .logo__text { font-size: 17px; overflow: hidden; text-overflow: ellipsis; }
+  .status-pill { order: 2; font-size: 12px; gap: 6px; padding: 4px 10px 4px 8px; }
+  .header__right { order: 3; margin-left: auto; }
+  .header::after { content: ""; order: 4; flex-basis: 100%; height: 0; }
+  .prayer-pill { order: 5; font-size: 12px; gap: 6px; padding: 4px 10px 4px 8px; }
+  .header__center { order: 6; margin-left: auto; }
+
+  .clock__time { font-size: 17px; }
+  .clock__date { font-size: 10px; }
+
+  /* Lay the market badge out on one line and drop the "(1:00 AM Dubai)" half:
+   * the countdown alone carries the meaning, and the wall-clock time is what
+   * pushed this row over the width. */
+  .market-badge { flex-direction: row; align-items: baseline; gap: 8px; }
+  .market-badge__label { font-size: 12px; }
+  .market-badge__value { font-size: 11px; }
+  .market-badge__at { display: none; }
 }
 
 
