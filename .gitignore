@@ -1,3 +1,8 @@
+# Secrets — this repo is PUBLIC. The gateway read-only token lives only in
+# .env on the VPS, never here.
+.env
+.env.*
+!.env.example
 .vercel
 # generated on the VPS every 10 min by scripts/fetch-news.py
 web/news.json

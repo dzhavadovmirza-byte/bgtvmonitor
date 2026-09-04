@@ -8,8 +8,8 @@ break the other.
 ## On the VPS (167.235.29.135)
 
 ```
-/opt/bgtvmonitor        <- this repo, checked out over SSH with its OWN deploy key
-/opt/fix-gateway        <- bgtradingplatform: FIX gateway, priceapi, Mini App, Caddy
+/opt/bgtvmonitor        <- this repo: web/ + priceapi/ + its own compose + .env
+/opt/fix-gateway        <- bgtradingplatform: FIX gateway, its own priceapi, Mini App, Caddy
 ```
 
 The checkout's `origin` is `git@github-bgtvmonitor:dzhavadovmirza-byte/bgtvmonitor.git`
@@ -46,16 +46,47 @@ broken Caddyfile takes both down — that is the platform's responsibility to va
 No docker, no restarts. Bump `?v=` in `web/index.html` when `app.js` /
 `styles.css` change — TVs cache aggressively.
 
-## Price API contract (consumed, not owned)
+## Price API — ours
 
-`GET /api/prices` → `{ source, sourceMode: live|stale|closed|error,
+`bgtv-priceapi`, built from `priceapi/` in this repo, serving `/api/prices`.
+
+It used to be the trading platform's `fixgw-priceapi`, shared by both
+products. That coupling was real and it bit: changes made for the board (the
+exchange calendar, the quote-driven OPEN badge) were edits to a service the
+Telegram Mini App depends on, and every platform rebuild blipped the board's
+price feed. Since 2026-09-04 the two share no files, no image, no container
+and no state volume. The platform keeps its own copy for the Mini App.
+
+The response shape both still produce:
+
+`GET /api/prices` -> `{ source, sourceMode: live|stale|closed|error,
 prices: { XAU, XAG: { price, bid, ask, dayHigh, dayLow, dayChange,
 dayChangePercent, updatedAt } }, history: { XAU, XAG: [{ price, ts }] },
-marketSummary: { status, untilOpen, untilClose, openTime, closeTime } }`.
+marketSummary: { status, untilOpen, untilClose, openTime, closeTime } }`
 
-The board's OPEN/CLOSED badge is `marketSummary` from priceapi: Mon–Fri
-09:00 → 01:00 Dubai (the FIX session window). Changing that schedule is a
-platform change (`priceapi/prices.js` in bgtradingplatform), not a monitor one.
+The OPEN/CLOSED badge is `marketSummary`: the real spot-metals week (Sunday
+23:00 -> Friday 22:00 London, one-hour break nightly) OR live quotes — a real
+price always wins. Changing that is now a change to *this* repo alone.
+
+### What is still shared, and why
+
+* **`fixgw-gateway`** — the FIX session that produces the prices. If it stops,
+  both products lose live quotes; the board keeps serving last-known prices
+  and marks itself DELAYED. Removing this would mean a second, different price
+  source for the board.
+* **the `fixgw` docker network** — declared `external` in our compose purely so
+  we can reach that gateway. `docker compose down` here cannot delete it.
+* **Caddy** — one TLS terminator and router for the single domain. If it dies,
+  both go down. Fixing that properly means a second domain for the Mini App.
+
+The board holds only `GATEWAY_READONLY_TOKEN`, which the gateway restricts to
+`/prices`. It deliberately does not hold `GATEWAY_API_TOKEN`, so nothing in
+this repo can place or cancel an order.
+
+### Secrets
+
+`.env` on the VPS holds `GATEWAY_READONLY_TOKEN`; see `.env.example`. It is
+gitignored — **this repository is public**.
 
 ## News ticker
 

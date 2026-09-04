@@ -1,0 +1,52 @@
+# monitor.budgetgold.org — the board's own price API.
+#
+# Separate from the trading platform's fixgw-priceapi on purpose. Deploying,
+# rebuilding or breaking either one now leaves the other untouched: separate
+# repos, images, containers, state volumes and deploy scripts.
+#
+# Still shared, and not fixable from this file:
+#   * fixgw-gateway — the FIX price source. If it stops, both lose live
+#     quotes; this service then serves last-known prices on its own.
+#   * the fixgw docker network, which is how we reach that gateway.
+#   * Caddy, which terminates TLS and routes / here and /app to the Mini App.
+services:
+  priceapi:
+    build: ./priceapi
+    container_name: bgtv-priceapi
+    restart: unless-stopped
+    environment:
+      - GATEWAY_URL=http://fixgw-gateway:8080
+      # Read-only token, scoped to /prices on the gateway (see the platform's
+      # gateway/main.go::isReadonlyPath). Deliberately NOT the full
+      # GATEWAY_API_TOKEN: the board must never hold a credential that can
+      # place or cancel an order. Value lives in .env, which is gitignored
+      # because this repository is public.
+      - GATEWAY_READONLY_TOKEN=${GATEWAY_READONLY_TOKEN:?missing — put it in /opt/bgtvmonitor/.env}
+    volumes:
+      - bgtv-priceapi-data:/data
+    networks:
+      - fixgw
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    stop_grace_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  # Our own history / day aggregates / last-known prices. Separate from the
+  # platform's fixgw-priceapi-data so neither can corrupt or reset the other.
+  bgtv-priceapi-data:
+
+networks:
+  # Owned by the trading platform's compose project. Declared external so a
+  # `docker compose down` in THIS project can never delete the network the
+  # platform's containers are sitting on.
+  fixgw:
+    external: true
+    name: fixgw
