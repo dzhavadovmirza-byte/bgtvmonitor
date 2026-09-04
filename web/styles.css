@@ -679,39 +679,55 @@ body {
   .card__chart { min-height: 180px; }
 
   /* Header, phone: exactly two rows.
-   *   1)  logo ........ LIVE ........ clock
-   *   2)  prayer countdown ........ market status
-   * .header__left is dissolved with display:contents so its three children can
-   * be ordered individually and split across the break, and ::after is a
-   * zero-height full-width flex item that forces the wrap at that one point.
-   * (Mobile-only, so the old TV browser above 700px never meets either.) */
+   *     logo .................... clock
+   *     LIVE   prayer ......... market
+   * Explicit grid areas rather than flex order + a wrap hack: with five
+   * items of very different widths, flex kept overflowing one row into the
+   * next in a way that depended on the countdown's text length. Grid pins
+   * each element, and the logo spanning the first two columns keeps the
+   * narrow LIVE pill from widening column 1 under it.
+   * .header__left is dissolved with display:contents so its three children
+   * become grid items in their own right. All of this is inside the
+   * max-width:700px block, so the LG webOS browser on the TV never sees it. */
   .header {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "logo logo   clock"
+      "live prayer market";
     align-items: center;
-    gap: 6px 10px;
+    column-gap: 8px;
+    row-gap: 6px;
     padding-bottom: 8px;
   }
-  .header__left { display: contents; }
-  .logo { order: 1; gap: 8px; min-width: 0; }
-  .logo__dot { width: 9px; height: 9px; }
-  .logo__text { font-size: 17px; overflow: hidden; text-overflow: ellipsis; }
-  .status-pill { order: 2; font-size: 12px; gap: 6px; padding: 4px 10px 4px 8px; }
-  .header__right { order: 3; margin-left: auto; }
-  .header::after { content: ""; order: 4; flex-basis: 100%; height: 0; }
-  .prayer-pill { order: 5; font-size: 12px; gap: 6px; padding: 4px 10px 4px 8px; }
-  .header__center { order: 6; margin-left: auto; }
+  .header__left   { display: contents; }
+  .logo           { grid-area: logo; min-width: 0; gap: 8px; }
+  .logo__dot      { width: 9px; height: 9px; }
+  .logo__text     { font-size: 17px; overflow: hidden; text-overflow: ellipsis; }
+  .header__right  { grid-area: clock; justify-self: end; }
+  .status-pill    { grid-area: live; justify-self: start; font-size: 11px; gap: 5px; padding: 3px 9px 3px 7px; }
+  .prayer-pill    { grid-area: prayer; justify-self: start; font-size: 11px; gap: 5px; padding: 3px 9px 3px 7px; }
+  .header__center { grid-area: market; justify-self: end; }
 
   .clock__time { font-size: 17px; }
   .clock__date { font-size: 10px; }
 
-  /* Lay the market badge out on one line and drop the "(1:00 AM Dubai)" half:
-   * the countdown alone carries the meaning, and the wall-clock time is what
-   * pushed this row over the width. */
-  .market-badge { flex-direction: row; align-items: baseline; gap: 8px; }
-  .market-badge__label { font-size: 12px; }
-  .market-badge__value { font-size: 11px; }
-  .market-badge__at { display: none; }
+  /* Keep the badge stacked and drop the "(1:00 AM Dubai)" half: the wall
+   * clock is what made this column too wide, and the countdown alone reads. */
+  /* nowrap: in this narrow column "MARKET OPEN" was breaking across two lines. */
+  .market-badge__label { font-size: 11px; white-space: nowrap; }
+  .market-badge__value { font-size: 10px; }
+  .market-badge__at    { display: none; }
+}
+
+/* Very narrow phones (SE-class, ~320px): the market column is the one that
+ * tips row two over, so shave the secondary type a little further rather
+ * than let the header grow a third row. */
+@media (max-width: 345px) {
+  .header { column-gap: 6px; }
+  .status-pill, .prayer-pill { font-size: 10px; padding: 3px 7px 3px 6px; }
+  .market-badge__label { font-size: 10px; }
+  .market-badge__value { font-size: 9px; }
 }
 
 
